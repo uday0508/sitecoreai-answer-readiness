@@ -1,0 +1,23 @@
+# dependencies
+node_modules/
+
+# next.js build output
+.next/
+out/
+
+# testing / coverage
+coverage/
+
+# env files - never commit real credentials
+.env
+.env.local
+.env.*.local
+
+# misc
+.DS_Store
+*.log
+npm-debug.log*
+
+# typescript
+*.tsbuildinfo
+next-env.d.ts
