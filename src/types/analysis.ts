@@ -1,15 +1,16 @@
 export type FindingSeverity = "info" | "warning" | "error" | "pass";
 
 export type AnalysisCategory =
-  | "structure"
-  | "entity"
-  | "metadata"
-  | "schema"
-  | "answer-readiness";
+  | "answer-structure"
+  | "passage-integrity"
+  | "factual-density"
+  | "entity-clarity"
+  | "faq-readiness";
 
 export interface FindingEvidence {
   source: string;
   value?: string;
+  count?: number;
 }
 
 export interface AnalysisFinding {
@@ -45,12 +46,6 @@ export interface AnalysisResult {
   };
 }
 
-/**
- * Shape of pages.context as actually returned by the Marketplace SDK host.
- * The host wraps the payload in { siteInfo, pageInfo }.
- * The top-level `data` wrapper is stripped by the SDK's query() method
- * before the value reaches onSuccess, but is present on the awaited response.
- */
 export interface PageInfo {
   id?: string;
   itemId?: string;

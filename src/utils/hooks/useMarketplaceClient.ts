@@ -1,6 +1,5 @@
 import { ClientSDK } from "@sitecore-marketplace-sdk/client";
 import { XMC } from "@sitecore-marketplace-sdk/xmc";
-import { AI } from "@sitecore-marketplace-sdk/ai";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 export interface MarketplaceClientState {
@@ -17,7 +16,7 @@ async function getMarketplaceClient() {
 
   sharedClient = await ClientSDK.init({
     target: window.parent,
-    modules: [XMC, AI],
+    modules: [XMC],
   });
 
   return sharedClient;
@@ -48,7 +47,10 @@ export function useMarketplaceClient() {
     } catch (error) {
       setState({
         client: null,
-        error: error instanceof Error ? error : new Error("Failed to initialize Marketplace SDK."),
+        error:
+          error instanceof Error
+            ? error
+            : new Error("Failed to initialize Marketplace SDK."),
         isLoading: false,
         isInitialized: false,
       });

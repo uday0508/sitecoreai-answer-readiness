@@ -3,14 +3,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useMarketplaceClient } from "@/src/utils/hooks/useMarketplaceClient";
 import type { AnalysisResult, PageContext, PageInfo } from "@/src/types/analysis";
-
-function severityClass(severity: string) {
-  if (severity === "pass") return "pass";
-  if (severity === "warning") return "warning";
-  if (severity === "error") return "error";
-  if (severity === "info") return "info";
-  return "";
-}
+import ScoreCard from "./ScoreCard";
+import CategoryCard from "./CategoryCard";
 
 interface QueryEnvelope<T> {
   data?: T;
@@ -23,13 +17,7 @@ export default function AnswerReadinessPanel() {
   const [result, setResult] = useState<AnalysisResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
-  const [diagnostics, setDiagnostics] = useState<string[]>([]);
   const unsubscribeRef = useRef<(() => void) | null>(null);
-
-  const log = useCallback((entry: string) => {
-    console.log(`[AnswerReadiness] ${entry}`);
-    setDiagnostics((prev) => [...prev.slice(-9), entry]);
-  }, []);
 
   const applyContext = useCallback((raw: unknown) => {
     const ctx = raw as PageContext | undefined;
@@ -44,255 +32,175 @@ export default function AnswerReadinessPanel() {
 
   useEffect(() => {
     if (!isInitialized || !client) return;
-
     let cancelled = false;
 
     const initialize = async () => {
       try {
-        log("Querying application.context");
         await client.query("application.context");
-        log("application.context ok");
-
         if (cancelled) return;
 
-        log("Subscribing to pages.context");
         const response = await client.query("pages.context", {
           subscribe: true,
           onSuccess: (context) => {
-            if (cancelled) return;
-            log(`pages.context onSuccess received`);
-            applyContext(context);
+            if (!cancelled) applyContext(context);
           },
         });
 
         const envelope = response as unknown as QueryEnvelope<PageContext>;
         unsubscribeRef.current = envelope.unsubscribe ?? null;
 
-        // The awaited query resolves with { data: {...} }. onSuccess receives
-        // the unwrapped value, but we handle both shapes defensively.
-        const payload =
-          envelope.data ??
-          (response as unknown as PageContext);
-
-        if (applyContext(payload)) {
-          log("Page context applied from initial response");
-        } else if (!cancelled) {
-          log("Initial pages.context response did not contain pageInfo");
-          setMessage(
-            "Page Builder context not received. Ensure the app is opened inside the Pages Context Panel extension point."
-          );
+        const payload = envelope.data ?? (response as unknown as PageContext);
+        if (!applyContext(payload) && !cancelled) {
+          setMessage("Page Builder context not received.");
         }
       } catch (e) {
-        const msg = e instanceof Error ? e.message : "Unknown error";
-        log(`Context initialization failed: ${msg}`);
-        if (cancelled) return;
-        setMessage(`Failed to load Page Builder context: ${msg}`);
+        if (!cancelled) {
+          setMessage(e instanceof Error ? e.message : "Context load failed.");
+        }
       }
     };
 
     void initialize();
-
     return () => {
       cancelled = true;
       unsubscribeRef.current?.();
       unsubscribeRef.current = null;
     };
-  }, [client, isInitialized, log, applyContext]);
+  }, [client, isInitialized, applyContext]);
 
   const analyze = useCallback(async () => {
     const pageId = page?.id ?? page?.itemId;
-    if (!client || !pageId) {
-      setMessage("No active Page Builder page is available.");
-      return;
-    }
+    if (!client || !pageId) return;
 
     setLoading(true);
     setMessage(null);
 
     try {
-      const sdk = client as unknown as {
-        getPageHTML?: () => Promise<string>;
-      };
-
+      const sdk = client as unknown as { getPageHTML?: () => Promise<string> };
       if (typeof sdk.getPageHTML !== "function") {
-        setMessage(
-          "Rendered HTML inspection is not available in this environment. Contact your administrator if you expect this capability."
-        );
-        setResult(null);
+        setMessage("Rendered HTML inspection is not available in this environment.");
         return;
       }
 
-      log("Calling getPageHTML()");
       const html = await sdk.getPageHTML();
-      log(`getPageHTML returned ${html?.length ?? 0} characters`);
-
       if (!html) {
         setMessage("The current page did not return rendered HTML.");
         return;
       }
 
-      const analysisResponse = await fetch("/api/analyze", {
+      const res = await fetch("/api/analyze", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          html,
-          pageId,
-          language: page?.language,
-        }),
+        body: JSON.stringify({ html, pageId, language: page?.language }),
       });
 
-      if (!analysisResponse.ok) {
-        throw new Error("The analysis service could not process the page.");
-      }
-
-      setResult((await analysisResponse.json()) as AnalysisResult);
+      if (!res.ok) throw new Error("The analysis service could not process the page.");
+      setResult((await res.json()) as AnalysisResult);
     } catch (e) {
-      const msg = e instanceof Error ? e.message : "Analysis failed.";
-      log(`Analysis error: ${msg}`);
-      setMessage(msg);
+      setMessage(e instanceof Error ? e.message : "Analysis failed.");
     } finally {
       setLoading(false);
     }
-  }, [client, page, log]);
+  }, [client, page]);
 
   if (clientError) {
     return (
-      <main className="panel">
-        <div className="error">
+      <div className="min-h-full bg-panel-bg p-4">
+        <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-800">
           Marketplace SDK initialization failed: {clientError.message}
         </div>
-      </main>
+      </div>
     );
   }
 
   const pageId = page?.id ?? page?.itemId;
 
   return (
-    <main className="panel">
-      <div className="header">
+    <div className="flex min-h-full flex-col gap-3 bg-panel-bg p-4">
+      {/* Header */}
+      <header className="flex items-start justify-between gap-3">
         <div>
-          <div className="eyebrow">SitecoreAI</div>
-          <h1>Answer Readiness</h1>
+          <div className="text-[10px] font-bold uppercase tracking-wider text-panel-muted">
+            SitecoreAI
+          </div>
+          <h1 className="mt-0.5 text-lg font-semibold leading-tight text-panel-text">
+            Answer Readiness
+          </h1>
         </div>
-        <span className="pill">AEO / GEO</span>
-      </div>
+        <span className="shrink-0 rounded-full border border-panel-border bg-white px-2.5 py-1 text-[10px] font-medium text-panel-muted">
+          AEO / GEO
+        </span>
+      </header>
 
-      <section className="card pageInfo">
-        <div className="eyebrow">Current page</div>
-        <div className="pageName">
-          {page?.displayName ?? page?.name ?? "Waiting for Page Builder context..."}
+      {/* Current Page */}
+      <section className="rounded-lg border border-panel-border bg-panel-card p-3.5 shadow-sm">
+        <div className="text-[10px] font-bold uppercase tracking-wider text-panel-muted">
+          Current page
         </div>
-        {page?.path && <div className="pagePath">{page.path}</div>}
-        {page?.language && (
-          <div className="meta">
-            <span className="pill">{page.language}</span>
+        {page ? (
+          <div className="mt-1.5 space-y-1">
+            <div className="truncate text-[13px] font-semibold text-panel-text">
+              {page.displayName ?? page.name ?? "Untitled page"}
+            </div>
+            {page.path && (
+              <div className="truncate text-[10px] text-panel-subtle">
+                {page.path}
+              </div>
+            )}
+            {page.language && (
+              <span className="inline-block rounded-full bg-slate-100 px-2 py-0.5 text-[10px] text-panel-muted">
+                {page.language}
+              </span>
+            )}
+          </div>
+        ) : (
+          <div className="mt-2 space-y-2">
+            <div className="h-3.5 w-2/3 animate-pulse rounded bg-slate-200" />
+            <div className="h-3 w-1/2 animate-pulse rounded bg-slate-200" />
           </div>
         )}
       </section>
 
+      {/* Analyze CTA */}
       {!result && (
-        <section className="card">
-          <div className="status">Analyze this page</div>
-          <div className="subtle">
-            Check structure, entity clarity, metadata, structured data, and answer-oriented
-            content.
+        <section className="rounded-lg border border-panel-border bg-panel-card p-3.5 shadow-sm">
+          <div className="text-[13px] font-semibold text-panel-text">
+            Analyze this page
           </div>
-          <div className="actions">
-            <button
-              className="primary"
-              onClick={analyze}
-              disabled={!isInitialized || loading || !pageId}
-            >
-              {loading ? "Analyzing…" : "Analyze page"}
-            </button>
-          </div>
+          <p className="mt-1 text-[11px] leading-relaxed text-panel-muted">
+            Check answer structure, passage integrity, factual density, entity
+            clarity, and FAQ readiness.
+          </p>
+          <button
+            className="mt-3 w-full rounded-md bg-blue-600 px-3 py-2 text-xs font-semibold text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+            onClick={analyze}
+            disabled={!isInitialized || loading || !pageId}
+          >
+            {loading ? "Analyzing…" : "Analyze page"}
+          </button>
           {message && (
-            <div className="error" style={{ marginTop: 10 }}>
+            <div className="mt-3 rounded-md border border-red-200 bg-red-50 p-2.5 text-[11px] text-red-800">
               {message}
             </div>
           )}
         </section>
       )}
 
+      {/* Results */}
       {result && (
         <>
-          <section className="card scoreCard">
-            <div className="score">
-              <div>
-                {result.score}
-                <small>/100</small>
-              </div>
-            </div>
-            <div>
-              <div className="status">
-                {result.score >= 80
-                  ? "Good readiness"
-                  : result.score >= 60
-                  ? "Needs improvement"
-                  : "Significant gaps"}
-              </div>
-              <div className="subtle">
-                Internal content-readiness indicator. It is not a search-engine ranking score.
-              </div>
-              <div className="actions">
-                <button className="secondary" onClick={analyze} disabled={loading}>
-                  {loading ? "Analyzing…" : "Re-analyze"}
-                </button>
-              </div>
-            </div>
-          </section>
+          <ScoreCard result={result} onReanalyze={analyze} loading={loading} />
 
           {result.categories.map((category) => (
-            <section className="card section" key={category.category}>
-              <div className="sectionHeader">
-                <span className="sectionTitle">{category.label}</span>
-                <span className="sectionScore">
-                  {category.score}/{category.maxScore}
-                </span>
-              </div>
-
-              {category.findings.map((finding) => (
-                <div className="finding" key={finding.id}>
-                  <div className="findingTop">
-                    <span className={`dot ${severityClass(finding.severity)}`} />
-                    <div className="findingTitle">{finding.title}</div>
-                  </div>
-                  <div className="findingText">{finding.description}</div>
-                  <div className="recommendation">{finding.recommendation}</div>
-                  {finding.evidence && (
-                    <div className="meta">
-                      <span className="pill">
-                        Evidence ({finding.evidence.source}):{" "}
-                        {finding.evidence.value?.slice(0, 100)}
-                      </span>
-                    </div>
-                  )}
-                </div>
-              ))}
-            </section>
+            <CategoryCard key={category.category} category={category} />
           ))}
 
-          <div className="footer">
+          <p className="mt-1 text-center text-[10px] leading-relaxed text-panel-subtle">
             Analyzed {new Date(result.analyzedAt).toLocaleString()} ·{" "}
             {result.source.htmlInspected ? "rendered HTML inspected" : "HTML not inspected"}
-          </div>
+          </p>
         </>
       )}
-
-      {diagnostics.length > 0 && (
-        <details className="card" style={{ marginTop: 12 }}>
-          <summary className="eyebrow" style={{ cursor: "pointer" }}>
-            Diagnostics ({diagnostics.length})
-          </summary>
-          <div style={{ fontFamily: "monospace", fontSize: 11, marginTop: 8 }}>
-            {diagnostics.map((d, i) => (
-              <div key={i} style={{ marginBottom: 4 }}>
-                {d}
-              </div>
-            ))}
-          </div>
-        </details>
-      )}
-    </main>
+    </div>
   );
 }

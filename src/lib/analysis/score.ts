@@ -7,11 +7,11 @@ import type {
 import type { HtmlSignals } from "./html";
 
 const categoryConfig: Array<{ category: AnalysisCategory; label: string; maxScore: number }> = [
-  { category: "structure", label: "Content Structure", maxScore: 20 },
-  { category: "entity", label: "Entity Clarity", maxScore: 20 },
-  { category: "metadata", label: "Metadata & Discoverability", maxScore: 20 },
-  { category: "schema", label: "Structured Data", maxScore: 20 },
-  { category: "answer-readiness", label: "Answer Readiness", maxScore: 20 },
+  { category: "answer-structure", label: "Answer Structure", maxScore: 35 },
+  { category: "passage-integrity", label: "Passage Integrity", maxScore: 25 },
+  { category: "factual-density", label: "Factual Density", maxScore: 20 },
+  { category: "entity-clarity", label: "Entity Clarity", maxScore: 10 },
+  { category: "faq-readiness", label: "FAQ Readiness", maxScore: 10 },
 ];
 
 export function calculateResult(
@@ -23,16 +23,17 @@ export function calculateResult(
   const categories: CategoryResult[] = categoryConfig.map((config) => {
     const categoryFindings = findings.filter((f) => f.category === config.category);
     const deduction = categoryFindings.reduce((sum, f) => sum + Math.max(0, f.scoreImpact), 0);
+    const rawScore = config.maxScore - Math.min(config.maxScore, deduction);
     return {
       ...config,
-      score: Math.max(0, config.maxScore - Math.min(config.maxScore, deduction)),
+      score: Math.max(0, Math.round(rawScore)),
       findings: categoryFindings,
     };
   });
 
   const htmlInspected =
     Boolean(signals.title) ||
-    Boolean(signals.metaDescription) ||
+    Boolean(signals.firstParagraph) ||
     signals.headings.length > 0 ||
     signals.jsonLd.length > 0;
 
@@ -41,10 +42,6 @@ export function calculateResult(
     categories,
     findings,
     analyzedAt: new Date().toISOString(),
-    source: {
-      pageId,
-      language,
-      htmlInspected,
-    },
+    source: { pageId, language, htmlInspected },
   };
 }
