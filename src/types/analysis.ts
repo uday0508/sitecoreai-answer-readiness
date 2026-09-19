@@ -22,7 +22,6 @@ export interface AnalysisFinding {
   recommendation: string;
   scoreImpact: number;
   evidence?: FindingEvidence;
-  confidence?: number;
   automated: boolean;
 }
 
@@ -61,9 +60,6 @@ export interface SiteInfo {
   name?: string;
   displayName?: string;
   language?: string;
-  hostId?: string;
-  targetHostname?: string;
-  scheme?: string;
 }
 
 export interface PageContext {

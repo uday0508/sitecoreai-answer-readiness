@@ -13,12 +13,10 @@ let sharedClient: ClientSDK | undefined;
 
 async function getMarketplaceClient() {
   if (sharedClient) return sharedClient;
-
   sharedClient = await ClientSDK.init({
     target: window.parent,
     modules: [XMC],
   });
-
   return sharedClient;
 }
 
@@ -38,12 +36,7 @@ export function useMarketplaceClient() {
 
     try {
       const client = await getMarketplaceClient();
-      setState({
-        client,
-        error: null,
-        isLoading: false,
-        isInitialized: true,
-      });
+      setState({ client, error: null, isLoading: false, isInitialized: true });
     } catch (error) {
       setState({
         client: null,

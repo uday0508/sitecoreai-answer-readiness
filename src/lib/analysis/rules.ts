@@ -6,11 +6,9 @@ const MIN_WORDS_FOR_DENSITY = 100;
 export function runRules(signals: HtmlSignals): AnalysisFinding[] {
   const findings: AnalysisFinding[] = [];
 
-  // ANSWER STRUCTURE
-
+  // ─── ANSWER STRUCTURE ─────────────────────────────────────
   const firstPara = signals.firstParagraph ?? "";
   const firstParaWords = firstPara.split(/\s+/).filter(Boolean).length;
-  const openingConfirms = firstParaWords > 0 && firstParaWords <= 120;
 
   if (!firstPara) {
     findings.push({
@@ -19,13 +17,13 @@ export function runRules(signals: HtmlSignals): AnalysisFinding[] {
       severity: "error",
       title: "No opening answer paragraph detected",
       description:
-        "The rendered page does not expose a clear opening paragraph that could be extracted as an answer.",
+        "The page does not expose a clear opening paragraph that could be extracted as an answer.",
       recommendation:
-        "Start the page with a short paragraph that directly confirms the topic and answers the primary question in the first 1–2 sentences.",
+        "Start the page with a short paragraph that answers the primary question in the first 1–2 sentences.",
       scoreImpact: 10,
       automated: true,
     });
-  } else if (!openingConfirms) {
+  } else if (firstParaWords > 120) {
     findings.push({
       id: "answer-first-paragraph-long",
       category: "answer-structure",
@@ -35,11 +33,7 @@ export function runRules(signals: HtmlSignals): AnalysisFinding[] {
       recommendation:
         "Split the opening into a short answer-first sentence (under 60 words) followed by supporting detail.",
       scoreImpact: 5,
-      evidence: {
-        source: "first-paragraph",
-        value: firstPara.slice(0, 160),
-        count: firstParaWords,
-      },
+      evidence: { source: "first-paragraph", value: firstPara.slice(0, 160), count: firstParaWords },
       automated: true,
     });
   } else {
@@ -49,7 +43,7 @@ export function runRules(signals: HtmlSignals): AnalysisFinding[] {
       severity: "pass",
       title: "Answer-first opening paragraph detected",
       description: `The page opens with a focused paragraph of about ${firstParaWords} words.`,
-      recommendation: "Keep the opening answer-focused and free of throat-clearing.",
+      recommendation: "Keep the opening answer-focused.",
       scoreImpact: 0,
       evidence: { source: "first-paragraph", value: firstPara.slice(0, 160) },
       automated: true,
@@ -91,8 +85,7 @@ export function runRules(signals: HtmlSignals): AnalysisFinding[] {
       severity: "info",
       title: "Few question-style headings",
       description: `Only ${signals.questionHeadings} of ${totalHeadings} headings are phrased as questions.`,
-      recommendation:
-        "Consider converting more headings to question form so AI systems can align them with queries.",
+      recommendation: "Convert more headings to question form so AI systems can align them with queries.",
       scoreImpact: 2,
       automated: true,
     });
@@ -117,8 +110,7 @@ export function runRules(signals: HtmlSignals): AnalysisFinding[] {
       severity: "info",
       title: "No lists or tables detected",
       description: "The page contains no bulleted lists or tables for AI systems to extract.",
-      recommendation:
-        "Use bulleted lists or tables where the content naturally fits a structured format.",
+      recommendation: "Use lists or tables where the content naturally fits a structured format.",
       scoreImpact: 2,
       automated: true,
     });
@@ -135,17 +127,16 @@ export function runRules(signals: HtmlSignals): AnalysisFinding[] {
     });
   }
 
-  // PASSAGE INTEGRITY
-
+  // ─── PASSAGE INTEGRITY ────────────────────────────────────
   if (signals.selfContainedIssues > 0) {
     findings.push({
       id: "passage-self-containment",
       category: "passage-integrity",
       severity: "warning",
       title: "Passages depend on surrounding context",
-      description: `Detected ${signals.selfContainedIssues} reference(s) to "as mentioned above" or similar backward/forward references.`,
+      description: `Detected ${signals.selfContainedIssues} backward/forward reference(s) such as "as mentioned above".`,
       recommendation:
-        "Make each section self-contained. AI systems extract passages in isolation, so context-dependent phrases break citations.",
+        "Make each section self-contained. AI systems extract passages in isolation.",
       scoreImpact: 6,
       evidence: { source: "rendered-html", count: signals.selfContainedIssues },
       automated: true,
@@ -176,7 +167,7 @@ export function runRules(signals: HtmlSignals): AnalysisFinding[] {
       title: "High pronoun density in sections",
       description: `${signals.pronounHeavySections} of ${signals.paragraphs.length} paragraphs rely heavily on pronouns.`,
       recommendation:
-        "Replace ambiguous pronouns with the actual entity name so passages make sense when extracted out of context.",
+        "Replace ambiguous pronouns with the actual entity name so passages make sense out of context.",
       scoreImpact: 5,
       automated: true,
     });
@@ -197,15 +188,14 @@ export function runRules(signals: HtmlSignals): AnalysisFinding[] {
       category: "passage-integrity",
       severity: "pass",
       title: "Pronoun density is acceptable",
-      description: "Paragraphs are not dependent on pronouns for meaning.",
+      description: "Paragraphs do not depend on pronouns for meaning.",
       recommendation: "Maintain explicit entity references.",
       scoreImpact: 0,
       automated: true,
     });
   }
 
-  // FACTUAL DENSITY
-
+  // ─── FACTUAL DENSITY ──────────────────────────────────────
   const wordCount = signals.text.split(/\s+/).filter(Boolean).length;
   const density =
     wordCount >= MIN_WORDS_FOR_DENSITY
@@ -218,7 +208,7 @@ export function runRules(signals: HtmlSignals): AnalysisFinding[] {
       category: "factual-density",
       severity: "info",
       title: "Page too short for density analysis",
-      description: `Only about ${wordCount} words detected. Factual density is not meaningful at this length.`,
+      description: `Only about ${wordCount} words detected.`,
       recommendation: "Expand the page if it is meant to answer a substantive question.",
       scoreImpact: 0,
       automated: true,
@@ -230,9 +220,9 @@ export function runRules(signals: HtmlSignals): AnalysisFinding[] {
       severity: "warning",
       title: "No factual markers detected",
       description:
-        "No numbers, dates, percentages, or comparison statements were found in the rendered content.",
+        "No numbers, dates, percentages, or comparisons were found in the rendered content.",
       recommendation:
-        "Add specific, verifiable facts: numbers, dates, percentages, or comparisons. AI systems preferentially quote concrete claims.",
+        "Add specific, verifiable facts. AI systems preferentially quote concrete claims.",
       scoreImpact: 8,
       automated: true,
     });
@@ -243,8 +233,7 @@ export function runRules(signals: HtmlSignals): AnalysisFinding[] {
       severity: "info",
       title: "Low factual density",
       description: `Detected ${signals.factualMarkers} factual marker(s) across ${wordCount} words.`,
-      recommendation:
-        "Add more concrete facts so AI systems have quotable material to lift.",
+      recommendation: "Add more concrete facts so AI systems have quotable material.",
       scoreImpact: 3,
       evidence: { source: "rendered-html", count: signals.factualMarkers },
       automated: true,
@@ -262,8 +251,7 @@ export function runRules(signals: HtmlSignals): AnalysisFinding[] {
     });
   }
 
-  // ENTITY CLARITY
-
+  // ─── ENTITY CLARITY ───────────────────────────────────────
   const definitionPatterns = /\b(is|are|refers to|defined as|means|known as)\b/i;
   const openingText = signals.text.slice(0, 1600);
 
@@ -276,7 +264,7 @@ export function runRules(signals: HtmlSignals): AnalysisFinding[] {
       description:
         "No definition-style language was detected near the beginning of the content.",
       recommendation:
-        'Add a concise, self-contained definition of the primary entity near the top (e.g., "X is Y").',
+        'Add a concise, self-contained definition near the top (e.g., "X is Y").',
       scoreImpact: 6,
       automated: true,
     });
@@ -286,8 +274,7 @@ export function runRules(signals: HtmlSignals): AnalysisFinding[] {
       category: "entity-clarity",
       severity: "pass",
       title: "Definition-style language detected",
-      description:
-        "The opening content contains language commonly used to define a topic or entity.",
+      description: "The opening content contains definition-style language.",
       recommendation: "Keep the definition concise and self-contained.",
       scoreImpact: 0,
       automated: true,
@@ -301,8 +288,7 @@ export function runRules(signals: HtmlSignals): AnalysisFinding[] {
       severity: "warning",
       title: "Page title is missing",
       description: "No title element was detected in the rendered page.",
-      recommendation:
-        "Provide a title that names the primary entity and mirrors the query the page answers.",
+      recommendation: "Provide a title that names the primary entity and mirrors the query.",
       scoreImpact: 4,
       automated: true,
     });
@@ -320,8 +306,7 @@ export function runRules(signals: HtmlSignals): AnalysisFinding[] {
     });
   }
 
-  // FAQ READINESS
-
+  // ─── FAQ READINESS ────────────────────────────────────────
   const hasFaqContent =
     /faq|frequently asked|questions/i.test(signals.text.slice(0, 4000)) ||
     signals.questionHeadings >= 2;
@@ -346,7 +331,7 @@ export function runRules(signals: HtmlSignals): AnalysisFinding[] {
       description:
         "Structured data declares FAQPage, but the rendered page does not contain matching Q&A content.",
       recommendation:
-        "Either add visible FAQ content that matches the schema, or remove the schema. Mismatched schema reduces trust.",
+        "Add visible FAQ content that matches the schema, or remove the schema. Mismatched schema reduces trust.",
       scoreImpact: 5,
       automated: true,
     });
@@ -358,7 +343,7 @@ export function runRules(signals: HtmlSignals): AnalysisFinding[] {
       title: "FAQ content detected without FAQPage schema",
       description: "The page contains Q&A-style content but no FAQPage structured data.",
       recommendation:
-        "Consider adding FAQPage schema. FAQPage is the one structured data type consistently correlated with AI citations.",
+        "Add FAQPage schema. FAQPage is the one structured data type consistently correlated with AI citations.",
       scoreImpact: 2,
       automated: true,
     });
@@ -368,8 +353,7 @@ export function runRules(signals: HtmlSignals): AnalysisFinding[] {
       category: "faq-readiness",
       severity: "info",
       title: "FAQ opportunity detected",
-      description:
-        "The page contains question-style headings but no consolidated Q&A section.",
+      description: "The page contains question-style headings but no consolidated Q&A section.",
       recommendation:
         "Consolidate likely user questions into a dedicated FAQ section with concise, self-contained answers.",
       scoreImpact: 3,
@@ -381,11 +365,41 @@ export function runRules(signals: HtmlSignals): AnalysisFinding[] {
       category: "faq-readiness",
       severity: "warning",
       title: "No FAQ structure detected",
-      description:
-        "The page contains no question headings and no FAQ content to align with AI queries.",
+      description: "The page contains no question headings and no FAQ content.",
       recommendation:
-        "Add a short FAQ section with 3–5 questions users are likely to ask. Pair with FAQPage schema where the platform supports it.",
+        "Add a short FAQ section with 3–5 questions users are likely to ask. Pair with FAQPage schema.",
       scoreImpact: 5,
+      automated: true,
+    });
+  }
+
+  // ─── PUBLISH-READINESS (Page Builder specific) ────────────
+  if (signals.hasLocalhostUrls) {
+    findings.push({
+      id: "publish-localhost-urls",
+      category: "entity-clarity",
+      severity: "warning",
+      title: "Localhost URLs detected in page metadata",
+      description:
+        "Canonical, OpenGraph, or JSON-LD URLs point to a localhost address.",
+      recommendation:
+        "Replace all localhost references with production HTTPS URLs before publishing.",
+      scoreImpact: 4,
+      automated: true,
+    });
+  }
+
+  if (signals.genericAltTexts > 0) {
+    findings.push({
+      id: "publish-generic-alt-text",
+      category: "entity-clarity",
+      severity: "info",
+      title: "Generic image alt text detected",
+      description: `Found ${signals.genericAltTexts} image(s) with placeholder alt text like "Card 1".`,
+      recommendation:
+        "Replace generic alt text with descriptive, entity-specific descriptions.",
+      scoreImpact: 2,
+      evidence: { source: "rendered-html", count: signals.genericAltTexts },
       automated: true,
     });
   }

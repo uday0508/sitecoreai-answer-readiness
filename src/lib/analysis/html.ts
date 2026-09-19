@@ -12,13 +12,13 @@ export interface HtmlSignals {
 
   hasFaqSchema: boolean;
   questionHeadings: number;
-  answerFirstHeadings: number;
   factualMarkers: number;
   pronounHeavySections: number;
   selfContainedIssues: number;
   lists: number;
   tables: number;
-  links: number;
+  hasLocalhostUrls: boolean;
+  genericAltTexts: number;
 }
 
 const QUESTION_START =
@@ -31,6 +31,9 @@ const FACTUAL_MARKERS =
 
 const SELF_CONTAINMENT_ISSUES =
   /\b(as mentioned (above|below|earlier|previously)|see above|see below|as noted (above|earlier)|the (above|previous|following) (section|paragraph|example)|the aforementioned)\b/gi;
+
+const GENERIC_ALT_PATTERN =
+  /alt=["'](card\s*\d+|image\s*\d+|img\s*\d+|photo\s*\d+|picture\s*\d+|placeholder)["']/gi;
 
 function decode(value: string) {
   return value
@@ -130,18 +133,6 @@ export function extractHtmlSignals(html: string): HtmlSignals {
   const paragraphs = splitParagraphs(text);
   const firstParagraph = paragraphs[0] ?? "";
 
-  let answerFirstHeadings = 0;
-  for (const h of headings) {
-    const idx = text.indexOf(h.text);
-    if (idx === -1) continue;
-    const after = text.slice(idx + h.text.length, idx + h.text.length + 200).trim();
-    if (!after) continue;
-    const sentenceEnd = after.search(/[.!?]/);
-    if (sentenceEnd > 0 && sentenceEnd <= 160) {
-      answerFirstHeadings++;
-    }
-  }
-
   let pronounHeavySections = 0;
   for (const p of paragraphs) {
     const words = p.split(/\s+/).length;
@@ -149,6 +140,10 @@ export function extractHtmlSignals(html: string): HtmlSignals {
     const pronounCount = countMatches(p, PRONOUNS);
     if (pronounCount / words > 0.08) pronounHeavySections++;
   }
+
+  const hasLocalhostUrls =
+    /localhost(:\d+)?/i.test(html) &&
+    /(canonical|og:url|"url"|"@id")/i.test(html);
 
   return {
     text,
@@ -162,12 +157,12 @@ export function extractHtmlSignals(html: string): HtmlSignals {
     jsonLd,
     hasFaqSchema: detectFaqSchema(jsonLd),
     questionHeadings: headings.filter((h) => h.isQuestion).length,
-    answerFirstHeadings,
     factualMarkers: countMatches(text, FACTUAL_MARKERS),
     pronounHeavySections,
     selfContainedIssues: countMatches(text, SELF_CONTAINMENT_ISSUES),
     lists: (html.match(/<ul\b|<ol\b/gi) ?? []).length,
     tables: (html.match(/<table\b/gi) ?? []).length,
-    links: (html.match(/<a\b[^>]*href=/gi) ?? []).length,
+    hasLocalhostUrls,
+    genericAltTexts: countMatches(html, GENERIC_ALT_PATTERN),
   };
 }
