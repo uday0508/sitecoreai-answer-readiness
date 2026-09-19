@@ -18,12 +18,16 @@ function readinessMeta(score: number) {
   return { label: "Not answer-ready", tone: "text-red-600", stroke: "#dc2626" };
 }
 
-export default function ScoreCard({ result, onReanalyze, loading }: Props) {
+export default function ScoreCard({ result }: Props) {
   const score = result.score ?? 0;
   const { label, tone, stroke } = readinessMeta(score);
   const radius = 26;
   const circumference = 2 * Math.PI * radius;
   const offset = circumference - (score / 100) * circumference;
+
+  const actionableCount = result.findings.filter(
+    (f) => f.severity === "warning" || f.severity === "error"
+  ).length;
 
   return (
     <section className="rounded-xl border border-slate-200 bg-white p-3.5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
@@ -55,19 +59,11 @@ export default function ScoreCard({ result, onReanalyze, loading }: Props) {
         <div className="min-w-0 flex-1">
           <div className={`text-[12.5px] font-semibold ${tone}`}>{label}</div>
           <p className="mt-0.5 text-[10px] leading-snug text-slate-500">
-            Content-readiness indicator. Not a ranking score.
+            {actionableCount > 0
+              ? `${actionableCount} issue${actionableCount === 1 ? "" : "s"} to fix`
+              : "No issues detected"}
           </p>
         </div>
-      </div>
-
-      <div className="mt-2.5 flex justify-end">
-        <button
-          className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[10.5px] font-medium text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
-          onClick={onReanalyze}
-          disabled={loading}
-        >
-          {loading ? "Analyzing…" : "Re-analyze"}
-        </button>
       </div>
     </section>
   );

@@ -4,9 +4,11 @@ import type { AnalysisResult } from "@/src/types/analysis";
 
 interface Props {
   result: AnalysisResult;
+  onReanalyze: () => void;
+  loading: boolean;
 }
 
-export default function DiagnosticCard({ result }: Props) {
+export default function DiagnosticCard({ result, onReanalyze, loading }: Props) {
   return (
     <section className="rounded-xl border border-amber-200 bg-amber-50 p-3.5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
       <div className="flex items-start gap-2.5">
@@ -69,9 +71,16 @@ export default function DiagnosticCard({ result }: Props) {
 
       <p className="mt-3 text-[10px] leading-relaxed text-amber-800">
         Add page-level content — an H1, an opening paragraph, prose sections,
-        and at least one FAQ or Q&A section — then re-run the analysis to get a
-        scored result.
+        and at least one FAQ or Q&A section — then re-run the analysis.
       </p>
+
+      <button
+        className="mt-3 w-full rounded-lg bg-slate-900 px-3 py-2 text-[12px] font-semibold text-white transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+        onClick={onReanalyze}
+        disabled={loading}
+      >
+        {loading ? "Analyzing…" : "Re-analyze"}
+      </button>
     </section>
   );
 }

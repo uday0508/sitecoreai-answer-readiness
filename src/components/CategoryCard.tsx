@@ -7,6 +7,19 @@ interface Props {
   category: CategoryResult;
 }
 
+const CATEGORY_HELP: Record<string, string> = {
+  "answer-structure":
+    "AI systems extract direct answers from headings and opening paragraphs. Questions in headings map cleanly to user queries.",
+  "passage-integrity":
+    "AI retrieves passages, not pages. If a section depends on the section above it, the extracted fragment becomes unusable.",
+  "factual-density":
+    "Concrete claims — numbers, dates, comparisons — are preferentially quoted by AI answer engines over vague prose.",
+  "entity-clarity":
+    "Clear entity definition and authorship signals help AI attribute claims to the right source.",
+  "faq-readiness":
+    "FAQPage schema is the one structured data type consistently correlated with AI citation because it mirrors Q&A extraction.",
+};
+
 function severityDot(severity: AnalysisFinding["severity"]) {
   switch (severity) {
     case "pass":
@@ -91,6 +104,14 @@ export default function CategoryCard({ category }: Props) {
 
       {expanded && (
         <div className="divide-y divide-slate-100 border-t border-slate-100">
+          {CATEGORY_HELP[category.category] && (
+            <div className="bg-slate-50/60 px-3 py-2">
+              <p className="text-[10px] italic leading-relaxed text-slate-500">
+                {CATEGORY_HELP[category.category]}
+              </p>
+            </div>
+          )}
+
           {ordered.map((finding) => (
             <div key={finding.id} className="px-3 py-2.5">
               <div className="flex items-start gap-2">

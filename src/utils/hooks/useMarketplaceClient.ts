@@ -40,10 +40,7 @@ export function useMarketplaceClient() {
     } catch (error) {
       setState({
         client: null,
-        error:
-          error instanceof Error
-            ? error
-            : new Error("Failed to initialize Marketplace SDK."),
+        error: error instanceof Error ? error : new Error("Failed to initialize Marketplace SDK."),
         isLoading: false,
         isInitialized: false,
       });
