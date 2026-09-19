@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { extractHtmlSignals } from "@/src/lib/analysis/html";
 import { runRules } from "@/src/lib/analysis/rules";
 import { calculateResult } from "@/src/lib/analysis/score";
+import type { CrawlerStatus } from "@/src/types/analysis";
 
 export const runtime = "nodejs";
 
@@ -13,6 +14,7 @@ export async function POST(request: Request) {
       html?: unknown;
       pageId?: unknown;
       language?: unknown;
+      crawlerStatus?: unknown;
     };
 
     if (typeof body.html !== "string" || body.html.length === 0) {
@@ -27,9 +29,15 @@ export async function POST(request: Request) {
     }
 
     const signals = extractHtmlSignals(body.html);
-    const findings = runRules(signals);
+
+    const crawlerStatus =
+      body.crawlerStatus && typeof body.crawlerStatus === "object"
+        ? (body.crawlerStatus as CrawlerStatus)
+        : undefined;
+
+    const rules = runRules(signals, crawlerStatus);
     const result = calculateResult(
-      findings,
+      rules,
       signals,
       typeof body.pageId === "string" ? body.pageId : undefined,
       typeof body.language === "string" ? body.language : undefined

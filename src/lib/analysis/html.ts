@@ -19,6 +19,13 @@ export interface HtmlSignals {
   tables: number;
   hasLocalhostUrls: boolean;
   genericAltTexts: number;
+
+  hasAuthorMeta: boolean;
+  hasAuthorSchema: boolean;
+  hasVisibleByline: boolean;
+  authorName: string | null;
+
+  wordCount: number;
 }
 
 const QUESTION_START =
@@ -34,6 +41,9 @@ const SELF_CONTAINMENT_ISSUES =
 
 const GENERIC_ALT_PATTERN =
   /alt=["'](card\s*\d+|image\s*\d+|img\s*\d+|photo\s*\d+|picture\s*\d+|placeholder)["']/gi;
+
+const BYLINE_PATTERN =
+  /\b(?:by|author|written by|posted by|reviewed by)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,2})/;
 
 function decode(value: string) {
   return value
@@ -72,6 +82,23 @@ function detectFaqSchema(jsonLd: unknown[]): boolean {
   return false;
 }
 
+function detectAuthorSchema(jsonLd: unknown[]): boolean {
+  for (const block of jsonLd) {
+    if (!block || typeof block !== "object") continue;
+    const stack: unknown[] = [block];
+    while (stack.length) {
+      const node = stack.pop();
+      if (!node || typeof node !== "object") continue;
+      const obj = node as Record<string, unknown>;
+      if (obj.author || obj["@type"] === "Person") return true;
+      for (const v of Object.values(obj)) {
+        if (v && typeof v === "object") stack.push(v);
+      }
+    }
+  }
+  return false;
+}
+
 function splitParagraphs(text: string): string[] {
   return text
     .split(/\n{2,}|(?<=\.\s)(?=[A-Z])/)
@@ -101,6 +128,9 @@ export function extractHtmlSignals(html: string): HtmlSignals {
   );
   const canonicalMatch = html.match(
     /<link[^>]+rel=["']canonical["'][^>]+href=["']([^"']*)["'][^>]*>/i
+  );
+  const authorMetaMatch = html.match(
+    /<meta[^>]+name=["']author["'][^>]+content=["']([^"']*)["'][^>]*>/i
   );
 
   const openGraph: Record<string, string> = {};
@@ -132,6 +162,7 @@ export function extractHtmlSignals(html: string): HtmlSignals {
 
   const paragraphs = splitParagraphs(text);
   const firstParagraph = paragraphs[0] ?? "";
+  const wordCount = text.split(/\s+/).filter(Boolean).length;
 
   let pronounHeavySections = 0;
   for (const p of paragraphs) {
@@ -144,6 +175,8 @@ export function extractHtmlSignals(html: string): HtmlSignals {
   const hasLocalhostUrls =
     /localhost(:\d+)?/i.test(html) &&
     /(canonical|og:url|"url"|"@id")/i.test(html);
+
+  const bylineMatch = text.match(BYLINE_PATTERN);
 
   return {
     text,
@@ -164,5 +197,14 @@ export function extractHtmlSignals(html: string): HtmlSignals {
     tables: (html.match(/<table\b/gi) ?? []).length,
     hasLocalhostUrls,
     genericAltTexts: countMatches(html, GENERIC_ALT_PATTERN),
+    hasAuthorMeta: Boolean(authorMetaMatch),
+    hasAuthorSchema: detectAuthorSchema(jsonLd),
+    hasVisibleByline: Boolean(bylineMatch),
+    authorName: authorMetaMatch
+      ? decode(authorMetaMatch[1].trim())
+      : bylineMatch
+      ? bylineMatch[1]
+      : null,
+    wordCount,
   };
 }
