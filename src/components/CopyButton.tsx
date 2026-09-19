@@ -8,10 +8,10 @@ interface Props {
   checklist: string;
   full: string;
   filename?: string;
+  iconOnly?: boolean;
 }
 
 type CopyState = "idle" | "copied" | "failed";
-
 interface MenuPosition {
   top: number;
   left: number;
@@ -19,7 +19,7 @@ interface MenuPosition {
 }
 
 const MENU_WIDTH = 200;
-const MENU_HEIGHT = 144;
+const MENU_HEIGHT = 192;
 
 function fallbackCopy(text: string): boolean {
   try {
@@ -51,7 +51,13 @@ function downloadText(text: string, filename: string) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-export default function CopyButton({ summary, checklist, full, filename = "answer-readiness.md" }: Props) {
+export default function CopyButton({
+  summary,
+  checklist,
+  full,
+  filename = "answer-readiness.md",
+  iconOnly = false,
+}: Props) {
   const [state, setState] = useState<CopyState>("idle");
   const [open, setOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
@@ -85,35 +91,35 @@ export default function CopyButton({ summary, checklist, full, filename = "answe
 
   useEffect(() => {
     if (!open) return;
-    const handleClick = (e: MouseEvent) => {
-      const target = e.target as Node;
-      if (triggerRef.current?.contains(target) || menuRef.current?.contains(target)) return;
+    const click = (e: MouseEvent) => {
+      const t = e.target as Node;
+      if (triggerRef.current?.contains(t) || menuRef.current?.contains(t)) return;
       setOpen(false);
     };
-    const handleKey = (e: KeyboardEvent) => {
+    const key = (e: KeyboardEvent) => {
       if (e.key === "Escape") setOpen(false);
     };
-    document.addEventListener("mousedown", handleClick);
-    document.addEventListener("keydown", handleKey);
+    document.addEventListener("mousedown", click);
+    document.addEventListener("keydown", key);
     return () => {
-      document.removeEventListener("mousedown", handleClick);
-      document.removeEventListener("keydown", handleKey);
+      document.removeEventListener("mousedown", click);
+      document.removeEventListener("keydown", key);
     };
   }, [open]);
 
   const doCopy = useCallback(async (text: string) => {
-    let success = false;
+    let ok = false;
     if (navigator.clipboard && window.isSecureContext) {
       try {
         await navigator.clipboard.writeText(text);
-        success = true;
+        ok = true;
       } catch {
-        success = fallbackCopy(text);
+        ok = fallbackCopy(text);
       }
     } else {
-      success = fallbackCopy(text);
+      ok = fallbackCopy(text);
     }
-    setState(success ? "copied" : "failed");
+    setState(ok ? "copied" : "failed");
     setOpen(false);
     setTimeout(() => setState("idle"), 2500);
   }, []);
@@ -124,15 +130,15 @@ export default function CopyButton({ summary, checklist, full, filename = "answe
   }, [full, filename]);
 
   return (
-    <div className="flex shrink-0 items-center gap-2">
+    <div className="relative flex items-center gap-2">
       {state === "copied" && (
-        <span className="rounded-md bg-emerald-50 px-2 py-0.5 text-[10px] font-medium text-emerald-700 ring-1 ring-inset ring-emerald-200">
+        <span className="rounded-md bg-emerald-50 px-1.5 py-0.5 text-[9.5px] font-medium text-emerald-700 ring-1 ring-inset ring-emerald-200">
           Copied
         </span>
       )}
       {state === "failed" && (
-        <span className="rounded-md bg-red-50 px-2 py-0.5 text-[10px] font-medium text-red-700 ring-1 ring-inset ring-red-200">
-          Copy failed
+        <span className="rounded-md bg-red-50 px-1.5 py-0.5 text-[9.5px] font-medium text-red-700 ring-1 ring-inset ring-red-200">
+          Failed
         </span>
       )}
 
@@ -142,20 +148,28 @@ export default function CopyButton({ summary, checklist, full, filename = "answe
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
         aria-haspopup="menu"
-        className="flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[10px] font-medium text-slate-600 transition-colors hover:bg-slate-50"
+        aria-label="Export options"
+        title="Export"
+        className={
+          iconOnly
+            ? "flex h-7 w-7 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 transition-colors hover:bg-slate-50 hover:text-slate-900"
+            : "flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[10px] font-medium text-slate-600 transition-colors hover:bg-slate-50"
+        }
       >
-        Export
-        <svg
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          className={`h-2.5 w-2.5 transition-transform ${open ? "rotate-180" : ""}`}
-        >
-          <path d="m6 9 6 6 6-6" />
-        </svg>
+        {iconOnly ? (
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-3.5 w-3.5">
+            <path d="M12 3v12" />
+            <path d="m7 10 5 5 5-5" />
+            <path d="M5 21h14" />
+          </svg>
+        ) : (
+          <>
+            Export
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`h-2.5 w-2.5 transition-transform ${open ? "rotate-180" : ""}`}>
+              <path d="m6 9 6 6 6-6" />
+            </svg>
+          </>
+        )}
       </button>
 
       {mounted && open &&
@@ -172,49 +186,21 @@ export default function CopyButton({ summary, checklist, full, filename = "answe
             }}
             className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-lg"
           >
-            <button
-              type="button"
-              role="menuitem"
-              onClick={() => void doCopy(summary)}
-              className="block w-full px-3 py-2 text-left text-[10.5px] font-medium text-slate-700 transition-colors hover:bg-slate-50"
-            >
+            <button type="button" role="menuitem" onClick={() => void doCopy(summary)} className="block w-full px-3 py-2 text-left text-[10.5px] font-medium text-slate-700 transition-colors hover:bg-slate-50">
               Copy summary
-              <span className="mt-0.5 block text-[9.5px] font-normal text-slate-400">
-                Score and top fixes
-              </span>
+              <span className="mt-0.5 block text-[9.5px] font-normal text-slate-400">Score and top fixes</span>
             </button>
-            <button
-              type="button"
-              role="menuitem"
-              onClick={() => void doCopy(checklist)}
-              className="block w-full border-t border-slate-100 px-3 py-2 text-left text-[10.5px] font-medium text-slate-700 transition-colors hover:bg-slate-50"
-            >
+            <button type="button" role="menuitem" onClick={() => void doCopy(checklist)} className="block w-full border-t border-slate-100 px-3 py-2 text-left text-[10.5px] font-medium text-slate-700 transition-colors hover:bg-slate-50">
               Copy checklist
-              <span className="mt-0.5 block text-[9.5px] font-normal text-slate-400">
-                Markdown task list
-              </span>
+              <span className="mt-0.5 block text-[9.5px] font-normal text-slate-400">Markdown task list</span>
             </button>
-            <button
-              type="button"
-              role="menuitem"
-              onClick={() => void doCopy(full)}
-              className="block w-full border-t border-slate-100 px-3 py-2 text-left text-[10.5px] font-medium text-slate-700 transition-colors hover:bg-slate-50"
-            >
+            <button type="button" role="menuitem" onClick={() => void doCopy(full)} className="block w-full border-t border-slate-100 px-3 py-2 text-left text-[10.5px] font-medium text-slate-700 transition-colors hover:bg-slate-50">
               Copy full report
-              <span className="mt-0.5 block text-[9.5px] font-normal text-slate-400">
-                All findings and evidence
-              </span>
+              <span className="mt-0.5 block text-[9.5px] font-normal text-slate-400">All findings and evidence</span>
             </button>
-            <button
-              type="button"
-              role="menuitem"
-              onClick={handleDownload}
-              className="block w-full border-t border-slate-100 px-3 py-2 text-left text-[10.5px] font-medium text-slate-700 transition-colors hover:bg-slate-50"
-            >
+            <button type="button" role="menuitem" onClick={handleDownload} className="block w-full border-t border-slate-100 px-3 py-2 text-left text-[10.5px] font-medium text-slate-700 transition-colors hover:bg-slate-50">
               Download .md
-              <span className="mt-0.5 block text-[9.5px] font-normal text-slate-400">
-                Save full report to disk
-              </span>
+              <span className="mt-0.5 block text-[9.5px] font-normal text-slate-400">Save to disk</span>
             </button>
           </div>,
           document.body

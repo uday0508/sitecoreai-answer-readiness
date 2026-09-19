@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMarketplaceClient } from "@/src/utils/hooks/useMarketplaceClient";
 import type {
   AnalysisResult,
@@ -11,18 +11,22 @@ import type {
   SiteInfo,
 } from "@/src/types/analysis";
 import { computeDiff } from "@/src/lib/analysis/diff";
-import ScoreCard from "./ScoreCard";
-import CategoryCard from "./CategoryCard";
+import ScorePanel from "./ScorePanel";
+import PriorityList from "./PriorityList";
+import CategoryGrid from "./CategoryGrid";
+import CategoryDetail from "./CategoryDetail";
+import HeroFix from "./HeroFix";
 import DiagnosticCard from "./DiagnosticCard";
-import PriorityCard from "./PriorityCard";
 import Banner from "./Banner";
 import CopyButton from "./CopyButton";
 import EmptyState from "./EmptyState";
-import Explainer from "./Explainer";
+import HelpModal from "./HelpModal";
 
 const SETTLE_MS = 1500;
 const MAX_WAIT_MS = 8000;
 const RETRY_INTERVAL_MS = 500;
+
+type View = "priority" | "overview" | string;
 
 function resolveSiteOrigin(siteInfo: SiteInfo | null, pageInfo: PageInfo | null): string | null {
   if (siteInfo?.targetHostname) {
@@ -44,11 +48,7 @@ function resolveSiteOrigin(siteInfo: SiteInfo | null, pageInfo: PageInfo | null)
 function buildSummaryReport(result: AnalysisResult, page: PageInfo | null): string {
   const lines: string[] = [];
   lines.push(`Answer Readiness — ${page?.displayName ?? page?.name ?? "Untitled"}`);
-  if (result.mode === "scored" && result.score !== null) {
-    lines.push(`Score: ${result.score}/100`);
-  } else {
-    lines.push("Status: Not enough content to score");
-  }
+  lines.push(`Score: ${result.score ?? "N/A"}/100`);
   const top = result.findings
     .filter((f) => f.severity === "error" || f.severity === "warning")
     .sort((a, b) => b.scoreImpact - a.scoreImpact)
@@ -57,7 +57,7 @@ function buildSummaryReport(result: AnalysisResult, page: PageInfo | null): stri
     lines.push("");
     lines.push("Top fixes:");
     top.forEach((f, i) => {
-      lines.push(`${i + 1}. ${f.title}`);
+      lines.push(`${i + 1}. ${f.title} (+${f.scoreImpact} pts)`);
       lines.push(`   ${f.recommendation}`);
     });
   }
@@ -65,9 +65,7 @@ function buildSummaryReport(result: AnalysisResult, page: PageInfo | null): stri
 }
 
 function buildChecklist(result: AnalysisResult): string {
-  const lines: string[] = [];
-  lines.push("# Answer Readiness Fixes");
-  lines.push("");
+  const lines: string[] = ["# Answer Readiness Fixes", ""];
   for (const cat of result.categories) {
     const actionable = cat.findings.filter(
       (f) => f.severity === "error" || f.severity === "warning"
@@ -87,47 +85,30 @@ function buildChecklist(result: AnalysisResult): string {
 }
 
 function buildFullReport(result: AnalysisResult, page: PageInfo | null): string {
-  const lines: string[] = [];
-  lines.push("SitecoreAI Answer Readiness");
-  lines.push("");
+  const lines: string[] = ["SitecoreAI Answer Readiness", ""];
   if (page) {
     lines.push(`Page: ${page.displayName ?? page.name ?? "Untitled"}`);
     if (page.path) lines.push(`Path: ${page.path}`);
     lines.push("");
   }
-  if (result.mode === "scored" && result.score !== null) {
-    lines.push(`Score: ${result.score}/100`);
-  } else {
-    lines.push("Status: Not enough content to score");
-  }
+  lines.push(`Score: ${result.score ?? "N/A"}/100`);
   lines.push("");
-
-  if (result.mode === "diagnostic") {
-    lines.push("Missing signals:");
-    for (const d of result.diagnostics) lines.push(`  - ${d}`);
-    lines.push("");
-  }
-
   for (const cat of result.categories) {
     lines.push(`${cat.label}: ${cat.score}/${cat.maxScore}`);
     const actionable = cat.findings.filter((f) => f.severity !== "pass");
     for (const f of actionable) {
-      lines.push(`  [${f.severity.toUpperCase()}] ${f.title}`);
+      lines.push(`  [${f.severity.toUpperCase()}] ${f.title} (+${f.scoreImpact} pts)`);
       lines.push(`    ${f.description}`);
       lines.push(`    Fix: ${f.recommendation}`);
       if (f.suggestion) {
         lines.push(`    Suggest: "${f.suggestion.from}" → "${f.suggestion.to}"`);
       }
       if (f.samples) {
-        for (const s of f.samples) {
-          lines.push(`    Sample (${s.kind}): ${s.value}`);
-        }
+        for (const s of f.samples) lines.push(`    Sample (${s.kind}): ${s.value}`);
       }
     }
     lines.push("");
   }
-
-  lines.push(`Analyzed: ${new Date(result.analyzedAt).toLocaleString()}`);
   return lines.join("\n");
 }
 
@@ -141,8 +122,9 @@ export default function AnswerReadinessPanel() {
   const [message, setMessage] = useState<string | null>(null);
   const [editCount, setEditCount] = useState(0);
   const [diff, setDiff] = useState<AnalysisDiff | null>(null);
-  const [expandedCategory, setExpandedCategory] = useState<string | null>(null);
+  const [view, setView] = useState<View>("priority");
   const [dismissedIds, setDismissedIds] = useState<Set<string>>(new Set());
+  const [helpOpen, setHelpOpen] = useState(false);
 
   const activePageIdRef = useRef<string | null>(null);
   const analyzeAbortRef = useRef<AbortController | null>(null);
@@ -246,12 +228,14 @@ export default function AnswerReadinessPanel() {
       if (controller.signal.aborted || activePageIdRef.current !== analyzedId) return;
 
       const previous = lastResultByPageRef.current.get(analyzedId) ?? null;
-      setDiff(computeDiff(previous, next));
+      const nextDiff = computeDiff(previous, next);
+      setDiff(nextDiff);
       lastResultByPageRef.current.set(analyzedId, next);
 
       setResult(next);
       setResultPageId(analyzedId);
       setDismissedIds(new Set());
+      setView(next.score !== null && next.score < 35 ? "priority" : "priority");
     } catch (e) {
       if (controller.signal.aborted || activePageIdRef.current !== analyzedId) return;
       setMessage(e instanceof Error ? e.message : "Analysis failed.");
@@ -291,7 +275,7 @@ export default function AnswerReadinessPanel() {
         setLoading(false);
         setEditCount(0);
         setDiff(null);
-        setExpandedCategory(null);
+        setView("priority");
         setDismissedIds(new Set());
 
         previousHtmlRef.current = "";
@@ -316,14 +300,14 @@ export default function AnswerReadinessPanel() {
             if (!cancelled) handlePageContext(context);
           },
         });
-        const contextEnvelope = contextResponse as unknown as {
+        const envelope = contextResponse as unknown as {
           unsubscribe?: () => void;
           data?: PageContext;
         };
-        unsubscribeContext = contextEnvelope.unsubscribe ?? null;
+        unsubscribeContext = envelope.unsubscribe ?? null;
 
-        if (contextEnvelope.data && activePageIdRef.current === null) {
-          handlePageContext(contextEnvelope.data);
+        if (envelope.data && activePageIdRef.current === null) {
+          handlePageContext(envelope.data);
         }
 
         unsubscribeFields = client.subscribe("pages.content.fieldsUpdated", {
@@ -360,8 +344,8 @@ export default function AnswerReadinessPanel() {
     const handler = (e: KeyboardEvent) => {
       if (e.key !== "r" && e.key !== "R") return;
       if (e.metaKey || e.ctrlKey || e.altKey) return;
-      const target = e.target as HTMLElement | null;
-      if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA")) return;
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA")) return;
       if (loading) return;
       e.preventDefault();
       void analyzeRef.current();
@@ -370,13 +354,33 @@ export default function AnswerReadinessPanel() {
     return () => window.removeEventListener("keydown", handler);
   }, [loading]);
 
-  const handleDismiss = useCallback((findingId: string) => {
+  const handleDismiss = useCallback((id: string) => {
     setDismissedIds((prev) => {
       const next = new Set(prev);
-      next.add(findingId);
+      next.add(id);
       return next;
     });
   }, []);
+
+  const handleRestore = useCallback((id: string) => {
+    setDismissedIds((prev) => {
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
+  }, []);
+
+  const handleOpenCategory = useCallback((category: string) => {
+    setView(category);
+  }, []);
+
+  const detailCategory = useMemo(() => {
+    if (!result) return null;
+    if (view === "priority" || view === "overview") return null;
+    return result.categories.find((c) => c.category === view) ?? null;
+  }, [result, view]);
+
+  const isLowScore = result?.score !== null && result?.score !== undefined && result.score < 35;
 
   if (clientError) {
     return (
@@ -403,29 +407,31 @@ export default function AnswerReadinessPanel() {
             Answer Readiness
           </h1>
         </div>
-        <div className="flex shrink-0 items-center gap-1.5">
+        <div className="flex shrink-0 items-center gap-1">
           <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[10px] font-medium text-slate-600">
             AEO / GEO
           </span>
           <button
             type="button"
+            onClick={() => setHelpOpen(true)}
+            title="What this measures"
+            aria-label="Help"
+            className="flex h-7 w-7 items-center justify-center rounded-full border border-slate-200 bg-white text-[11px] font-semibold text-slate-600 transition-colors hover:bg-slate-50 hover:text-slate-900"
+          >
+            ?
+          </button>
+          <button
+            type="button"
             onClick={() => void analyzeRef.current()}
             disabled={!canAnalyze}
             title="Re-analyze page (R)"
+            aria-label="Re-analyze"
             className="flex h-7 w-7 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 transition-colors hover:bg-slate-50 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-40"
           >
             {loading ? (
               <span className="h-3 w-3 animate-spin rounded-full border-2 border-slate-300 border-t-slate-700" />
             ) : (
-              <svg
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                className="h-3.5 w-3.5"
-              >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-3.5 w-3.5">
                 <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" />
                 <path d="M21 3v5h-5" />
                 <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" />
@@ -433,6 +439,14 @@ export default function AnswerReadinessPanel() {
               </svg>
             )}
           </button>
+          {resultsAreCurrent && (
+            <CopyButton
+              iconOnly
+              summary={buildSummaryReport(result, page)}
+              checklist={buildChecklist(result)}
+              full={buildFullReport(result, page)}
+            />
+          )}
         </div>
       </header>
 
@@ -485,9 +499,25 @@ export default function AnswerReadinessPanel() {
         />
       )}
 
-      {resultsAreCurrent && result.mode === "scored" && (
+      {resultsAreCurrent && result.mode === "scored" && detailCategory && (
+        <CategoryDetail
+          category={detailCategory}
+          dismissedIds={dismissedIds}
+          onDismiss={handleDismiss}
+          onRestore={handleRestore}
+          onBack={() => setView(isLowScore ? "priority" : "overview")}
+        />
+      )}
+
+      {resultsAreCurrent && result.mode === "scored" && !detailCategory && (
         <>
-          <ScoreCard result={result} diff={diff} />
+          <ScorePanel
+            result={result}
+            diff={diff}
+            activeTab={view === "priority" ? "priority" : "overview"}
+            onTabChange={(tab) => setView(tab)}
+            hideTabs={isLowScore}
+          />
 
           {(editCount > 0 ||
             Date.now() - new Date(result.analyzedAt).getTime() > 300000) && (
@@ -499,36 +529,34 @@ export default function AnswerReadinessPanel() {
             />
           )}
 
-          <PriorityCard
-            result={result}
-            onExpandCategory={(cat) => setExpandedCategory(cat)}
-          />
+          {view === "priority" && (
+            <>
+              {isLowScore && (
+                <HeroFix result={result} onOpenCategory={handleOpenCategory} />
+              )}
+              <div className="px-0.5 text-[9.5px] font-bold uppercase tracking-[0.08em] text-slate-400">
+                All fixes
+              </div>
+              <PriorityList
+                result={result}
+                onOpenCategory={handleOpenCategory}
+                dismissedIds={dismissedIds}
+              />
+            </>
+          )}
 
-          {result.categories.map((category) => (
-            <CategoryCard
-              key={category.category}
-              category={category}
-              forceExpanded={expandedCategory === category.category}
-              dismissedIds={dismissedIds}
-              onDismiss={handleDismiss}
-            />
-          ))}
+          {view === "overview" && !isLowScore && (
+            <CategoryGrid result={result} onOpenCategory={handleOpenCategory} />
+          )}
 
-          <div className="flex items-center justify-between gap-2">
-            <p className="text-[9.5px] leading-relaxed text-slate-400">
-              {result.source.wordCount} words · {result.source.headingCount} headings ·{" "}
-              {result.source.paragraphCount} paragraphs
-            </p>
-            <CopyButton
-              summary={buildSummaryReport(result, page)}
-              checklist={buildChecklist(result)}
-              full={buildFullReport(result, page)}
-            />
-          </div>
-
-          <Explainer />
+          <p className="text-center text-[9.5px] leading-relaxed text-slate-400">
+            {result.source.wordCount} words · {result.source.headingCount} headings ·{" "}
+            {result.source.paragraphCount} paragraphs
+          </p>
         </>
       )}
+
+      <HelpModal open={helpOpen} onClose={() => setHelpOpen(false)} />
     </div>
   );
 }
