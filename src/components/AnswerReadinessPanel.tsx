@@ -1,64 +1,135 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useMarketplaceClient } from "@/src/utils/hooks/useMarketplaceClient";
-import type {
-  AnalysisResult,
-  AnalysisDiff,
-  CrawlerStatus,
-  PageContext,
-  PageInfo,
-  SiteInfo,
-} from "@/src/types/analysis";
-import { computeDiff } from "@/src/lib/analysis/diff";
-import { formatRelativeTime } from "@/src/lib/format";
-import ScorePanel from "./ScorePanel";
-import PriorityList from "./PriorityList";
-import CategoryGrid from "./CategoryGrid";
-import CategoryDetail from "./CategoryDetail";
-import HeroFix from "./HeroFix";
+import type { AnalysisResult, PageContext, PageInfo } from "@/src/types/analysis";
+import ScoreCard from "./ScoreCard";
+import CategoryCard from "./CategoryCard";
 import DiagnosticCard from "./DiagnosticCard";
+import PriorityCard from "./PriorityCard";
 import Banner from "./Banner";
 import CopyButton from "./CopyButton";
 import EmptyState from "./EmptyState";
 import HelpModal from "./HelpModal";
 
-const SETTLE_MS = 1500;
-const MAX_WAIT_MS = 8000;
-const RETRY_INTERVAL_MS = 500;
+interface QueryEnvelope<T> {
+  data?: T;
+  unsubscribe?: () => void;
+}
 
-type View = "priority" | "overview" | string;
+/**
+ * Read the rendered HTML of a page via the Agent API.
+ * This is the single source of HTML for both the context panel
+ * and the fullscreen extension.
+ */
+async function readPageHtml(
+  client: unknown,
+  pageId: string,
+  language: string | undefined,
+  sitecoreContextId: string
+): Promise<string | null> {
+  try {
+    const res = await (
+      client as {
+        query: (
+          name: string,
+          options: {
+            params: {
+              path: Record<string, unknown>;
+              query: Record<string, unknown>;
+            };
+          }
+        ) => Promise<unknown>;
+      }
+    ).query("xmc.agent.pagesGetPageHtml", {
+      params: {
+        path: { pageId },
+        query: { sitecoreContextId, language },
+      },
+    });
 
-function resolveSiteOrigin(siteInfo: SiteInfo | null, pageInfo: PageInfo | null): string | null {
-  if (siteInfo?.targetHostname) {
-    const scheme = siteInfo.scheme ?? "https";
-    try {
-      const url = new URL(`${scheme}://${siteInfo.targetHostname}`);
-      if (url.protocol === "http:" || url.protocol === "https:") return url.origin;
-    } catch { /* */ }
+    return extractHtml(res);
+  } catch {
+    return null;
   }
-  if (pageInfo?.url) {
-    try {
-      const url = new URL(pageInfo.url);
-      if (url.protocol === "http:" || url.protocol === "https:") return url.origin;
-    } catch { /* */ }
+}
+
+function extractHtml(raw: unknown, depth = 0): string | null {
+  if (depth > 6) return null;
+  if (typeof raw === "string" && raw.length > 0) return raw;
+  if (!raw || typeof raw !== "object") return null;
+
+  const obj = raw as Record<string, unknown>;
+  for (const key of ["html", "content", "body"]) {
+    if (typeof obj[key] === "string" && (obj[key] as string).length > 0) {
+      return obj[key] as string;
+    }
+  }
+  for (const value of Object.values(obj)) {
+    if (value && typeof value === "object") {
+      const found = extractHtml(value, depth + 1);
+      if (found) return found;
+    }
   }
   return null;
+}
+
+function buildReport(result: AnalysisResult, page: PageInfo | null): string {
+  const lines: string[] = [];
+  lines.push("SitecoreAI Answer Readiness");
+  lines.push("");
+  if (page) {
+    lines.push(`Page: ${page.displayName ?? page.name ?? "Untitled"}`);
+    if (page.path) lines.push(`Path: ${page.path}`);
+    lines.push("");
+  }
+  if (result.mode === "scored" && result.score !== null) {
+    lines.push(`Score: ${result.score}/100`);
+  } else {
+    lines.push("Status: Not enough content to score");
+  }
+  lines.push("");
+
+  if (result.mode === "diagnostic") {
+    lines.push("Missing signals:");
+    for (const d of result.diagnostics) lines.push(`  - ${d}`);
+    lines.push("");
+  }
+
+  for (const cat of result.categories) {
+    lines.push(`${cat.label}: ${cat.score}/${cat.maxScore}`);
+    const actionable = cat.findings.filter((f) => f.severity !== "pass");
+    for (const f of actionable) {
+      lines.push(`  [${f.severity.toUpperCase()}] ${f.title}`);
+      lines.push(`    ${f.description}`);
+      lines.push(`    Fix: ${f.recommendation}`);
+    }
+    lines.push("");
+  }
+
+  lines.push(`Analyzed: ${new Date(result.analyzedAt).toLocaleString()}`);
+  return lines.join("\n");
 }
 
 function buildSummaryReport(result: AnalysisResult, page: PageInfo | null): string {
   const lines: string[] = [];
   lines.push(`Answer Readiness — ${page?.displayName ?? page?.name ?? "Untitled"}`);
-  lines.push(`Score: ${result.score ?? "N/A"}/100`);
+  if (result.mode === "scored" && result.score !== null) {
+    lines.push(`Score: ${result.score}/100`);
+  } else {
+    lines.push("Status: Not enough content to score");
+  }
+
   const top = result.findings
     .filter((f) => f.severity === "error" || f.severity === "warning")
     .sort((a, b) => b.scoreImpact - a.scoreImpact)
     .slice(0, 5);
+
   if (top.length > 0) {
     lines.push("");
     lines.push("Top fixes:");
     top.forEach((f, i) => {
-      lines.push(`${i + 1}. ${f.title} (+${f.scoreImpact} pts)`);
+      lines.push(`${i + 1}. ${f.title}`);
       lines.push(`   ${f.recommendation}`);
     });
   }
@@ -85,173 +156,39 @@ function buildChecklist(result: AnalysisResult): string {
   return lines.join("\n");
 }
 
-function buildFullReport(result: AnalysisResult, page: PageInfo | null): string {
-  const lines: string[] = ["SitecoreAI Answer Readiness", ""];
-  if (page) {
-    lines.push(`Page: ${page.displayName ?? page.name ?? "Untitled"}`);
-    if (page.path) lines.push(`Path: ${page.path}`);
-    lines.push("");
-  }
-  lines.push(`Score: ${result.score ?? "N/A"}/100`);
-  lines.push("");
-  for (const cat of result.categories) {
-    lines.push(`${cat.label}: ${cat.score}/${cat.maxScore}`);
-    const actionable = cat.findings.filter((f) => f.severity !== "pass");
-    for (const f of actionable) {
-      lines.push(`  [${f.severity.toUpperCase()}] ${f.title} (+${f.scoreImpact} pts)`);
-      lines.push(`    ${f.description}`);
-      lines.push(`    Fix: ${f.recommendation}`);
-      if (f.suggestion) {
-        lines.push(`    Suggest: "${f.suggestion.from}" → "${f.suggestion.to}"`);
-      }
-      if (f.samples) {
-        for (const s of f.samples) lines.push(`    Sample (${s.kind}): ${s.value}`);
-      }
-    }
-    lines.push("");
-  }
-  return lines.join("\n");
-}
-
 export default function AnswerReadinessPanel() {
   const { client, error: clientError, isInitialized } = useMarketplaceClient();
   const [page, setPage] = useState<PageInfo | null>(null);
-  const [site, setSite] = useState<SiteInfo | null>(null);
+  const [sitecoreContextId, setSitecoreContextId] = useState<string | null>(null);
   const [result, setResult] = useState<AnalysisResult | null>(null);
   const [resultPageId, setResultPageId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [editCount, setEditCount] = useState(0);
-  const [diff, setDiff] = useState<AnalysisDiff | null>(null);
-  const [view, setView] = useState<View>("priority");
-  const [dismissedIds, setDismissedIds] = useState<Set<string>>(new Set());
+  const [previousScore, setPreviousScore] = useState<number | null>(null);
+  const [expandedCategory, setExpandedCategory] = useState<string | null>(null);
   const [helpOpen, setHelpOpen] = useState(false);
-  const [now, setNow] = useState(Date.now());
 
   const activePageIdRef = useRef<string | null>(null);
   const analyzeAbortRef = useRef<AbortController | null>(null);
   const settleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const previousHtmlRef = useRef<string>("");
   const resultPageIdRef = useRef<string | null>(null);
   const analyzeRef = useRef<() => Promise<void>>(async () => {});
   const pageRef = useRef<PageInfo | null>(null);
-  const siteRef = useRef<SiteInfo | null>(null);
-  const lastResultByPageRef = useRef<Map<string, AnalysisResult>>(new Map());
+  const sitecoreContextIdRef = useRef<string | null>(null);
+  const lastScoreByPageRef = useRef<Map<string, number>>(new Map());
 
-  useEffect(() => { pageRef.current = page; }, [page]);
-  useEffect(() => { siteRef.current = site; }, [site]);
-  useEffect(() => { resultPageIdRef.current = resultPageId; }, [resultPageId]);
-
-  // Tick for relative time updates
   useEffect(() => {
-    const interval = setInterval(() => setNow(Date.now()), 15000);
-    return () => clearInterval(interval);
-  }, []);
+    pageRef.current = page;
+  }, [page]);
 
-  const waitForCanvasUpdate = useCallback(
-    async (
-      sdk: { getPageHTML?: () => Promise<string> },
-      previousHtml: string,
-      signal: AbortSignal
-    ): Promise<string | null> => {
-      const started = Date.now();
-      while (Date.now() - started < MAX_WAIT_MS) {
-        if (signal.aborted) return null;
-        try {
-          const html = await sdk.getPageHTML!();
-          if (signal.aborted) return null;
-          if (!previousHtml || html !== previousHtml) return html;
-        } catch { /* retry */ }
-        await new Promise((r) => setTimeout(r, RETRY_INTERVAL_MS));
-      }
-      try { return (await sdk.getPageHTML!()) ?? null; } catch { return null; }
-    },
-    []
-  );
+  useEffect(() => {
+    resultPageIdRef.current = resultPageId;
+  }, [resultPageId]);
 
-  const analyze = useCallback(async () => {
-    const currentPage = pageRef.current;
-    const currentSite = siteRef.current;
-    const pageId = currentPage?.id ?? currentPage?.itemId;
-    if (!client || !pageId) return;
-
-    analyzeAbortRef.current?.abort();
-    const controller = new AbortController();
-    analyzeAbortRef.current = controller;
-
-    const analyzedId = pageId;
-    setLoading(true);
-    setMessage(null);
-    setEditCount(0);
-
-    try {
-      const sdk = client as unknown as { getPageHTML?: () => Promise<string> };
-      if (typeof sdk.getPageHTML !== "function") {
-        setMessage("Rendered HTML inspection is not available in this environment.");
-        return;
-      }
-
-      const html = await waitForCanvasUpdate(sdk, previousHtmlRef.current, controller.signal);
-      if (controller.signal.aborted || activePageIdRef.current !== analyzedId) return;
-      if (!html) {
-        setMessage("The current page did not return rendered HTML.");
-        return;
-      }
-      previousHtmlRef.current = html;
-
-      const siteOrigin = resolveSiteOrigin(currentSite, currentPage);
-      let crawler: CrawlerStatus | null = null;
-      if (siteOrigin) {
-        try {
-          const res = await fetch("/api/crawler-check", {
-            method: "POST",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify({ siteUrl: siteOrigin }),
-            signal: controller.signal,
-          });
-          if (res.ok) {
-            const data = (await res.json()) as CrawlerStatus;
-            if (data.checked) crawler = data;
-          }
-        } catch { /* */ }
-      }
-
-      if (controller.signal.aborted || activePageIdRef.current !== analyzedId) return;
-
-      const analysisRes = await fetch("/api/analyze", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          html,
-          pageId: analyzedId,
-          language: currentPage?.language,
-          crawlerStatus: crawler ?? undefined,
-        }),
-        signal: controller.signal,
-      });
-
-      if (!analysisRes.ok) throw new Error("The analysis service could not process the page.");
-      const next = (await analysisRes.json()) as AnalysisResult;
-
-      if (controller.signal.aborted || activePageIdRef.current !== analyzedId) return;
-
-      const previous = lastResultByPageRef.current.get(analyzedId) ?? null;
-      setDiff(computeDiff(previous, next));
-      lastResultByPageRef.current.set(analyzedId, next);
-
-      setResult(next);
-      setResultPageId(analyzedId);
-      setDismissedIds(new Set());
-      setNow(Date.now());
-    } catch (e) {
-      if (controller.signal.aborted || activePageIdRef.current !== analyzedId) return;
-      setMessage(e instanceof Error ? e.message : "Analysis failed.");
-    } finally {
-      if (!controller.signal.aborted) setLoading(false);
-    }
-  }, [client, waitForCanvasUpdate]);
-
-  useEffect(() => { analyzeRef.current = analyze; }, [analyze]);
+  useEffect(() => {
+    sitecoreContextIdRef.current = sitecoreContextId;
+  }, [sitecoreContextId]);
 
   useEffect(() => {
     if (!isInitialized || !client) return;
@@ -262,9 +199,6 @@ export default function AnswerReadinessPanel() {
     const handlePageContext = (raw: unknown) => {
       const ctx = raw as PageContext | undefined;
       const pageInfo = ctx?.pageInfo ?? null;
-      const siteInfo = ctx?.siteInfo ?? null;
-
-      if (siteInfo) setSite(siteInfo);
       if (!pageInfo) return;
 
       const nextId = pageInfo.id ?? pageInfo.itemId ?? null;
@@ -281,43 +215,46 @@ export default function AnswerReadinessPanel() {
         setMessage(null);
         setLoading(false);
         setEditCount(0);
-        setDiff(null);
-        setView("priority");
-        setDismissedIds(new Set());
+        setPreviousScore(null);
+        setExpandedCategory(null);
 
-        previousHtmlRef.current = "";
         activePageIdRef.current = nextId;
 
         settleTimerRef.current = setTimeout(() => {
           if (cancelled) return;
           if (activePageIdRef.current !== nextId) return;
           void analyzeRef.current();
-        }, SETTLE_MS);
+        }, 500);
       }
     };
 
     const initialize = async () => {
       try {
-        await client.query("application.context");
+        const appRes = await client.query("application.context");
         if (cancelled) return;
 
-        const contextResponse = await client.query("pages.context", {
+        const appData = (appRes as { data?: unknown }).data ?? appRes;
+        const access = (appData as {
+          resourceAccess?: Array<{ context?: { live?: string } }>;
+        }).resourceAccess;
+        const ctxId = access?.[0]?.context?.live;
+        if (ctxId) setSitecoreContextId(ctxId);
+
+        const response = await client.query("pages.context", {
           subscribe: true,
           onSuccess: (context) => {
             if (!cancelled) handlePageContext(context);
           },
         });
-        const envelope = contextResponse as unknown as {
-          unsubscribe?: () => void;
-          data?: PageContext;
-        };
-        unsubscribeContext = envelope.unsubscribe ?? null;
+
+        const envelope = response as unknown as QueryEnvelope<PageContext>;
+        unsubscribeContext = envelope.unsubscribe ?? undefined;
 
         if (envelope.data && activePageIdRef.current === null) {
           handlePageContext(envelope.data);
         }
 
-        unsubscribeFields = client.subscribe("pages.content.fieldsUpdated", {
+        const fieldsSub = client.subscribe("pages.content.fieldsUpdated", {
           onData: () => {
             if (cancelled) return;
             if (
@@ -329,8 +266,11 @@ export default function AnswerReadinessPanel() {
           },
           onError: (err) => console.error("Fields subscription error:", err),
         });
+        unsubscribeFields = typeof fieldsSub === "function" ? fieldsSub : undefined;
       } catch (e) {
-        if (!cancelled) setMessage(e instanceof Error ? e.message : "Context load failed.");
+        if (!cancelled) {
+          setMessage(e instanceof Error ? e.message : "Context load failed.");
+        }
       }
     };
 
@@ -347,12 +287,83 @@ export default function AnswerReadinessPanel() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [client, isInitialized]);
 
+  const analyze = useCallback(async () => {
+    const currentPage = pageRef.current;
+    const pageId = currentPage?.id ?? currentPage?.itemId;
+    const ctxId = sitecoreContextIdRef.current;
+    if (!client || !pageId || !ctxId) return;
+
+    analyzeAbortRef.current?.abort();
+    const controller = new AbortController();
+    analyzeAbortRef.current = controller;
+
+    const analyzedId = pageId;
+    setLoading(true);
+    setMessage(null);
+    setEditCount(0);
+
+    try {
+      const html = await readPageHtml(
+        client,
+        analyzedId,
+        currentPage?.language,
+        ctxId
+      );
+
+      if (controller.signal.aborted) return;
+      if (activePageIdRef.current !== analyzedId) return;
+
+      if (!html) {
+        setMessage(
+          "The page HTML could not be retrieved from the published HTML endpoint."
+        );
+        return;
+      }
+
+      const res = await fetch("/api/analyze", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          html,
+          pageId: analyzedId,
+          language: currentPage?.language,
+        }),
+        signal: controller.signal,
+      });
+
+      if (!res.ok) throw new Error("The analysis service could not process the page.");
+      const next = (await res.json()) as AnalysisResult;
+
+      if (controller.signal.aborted) return;
+      if (activePageIdRef.current !== analyzedId) return;
+
+      const prior = lastScoreByPageRef.current.get(analyzedId) ?? null;
+      setPreviousScore(prior);
+      if (next.mode === "scored" && next.score !== null) {
+        lastScoreByPageRef.current.set(analyzedId, next.score);
+      }
+
+      setResult(next);
+      setResultPageId(analyzedId);
+    } catch (e) {
+      if (controller.signal.aborted) return;
+      if (activePageIdRef.current !== analyzedId) return;
+      setMessage(e instanceof Error ? e.message : "Analysis failed.");
+    } finally {
+      if (!controller.signal.aborted) setLoading(false);
+    }
+  }, [client]);
+
+  useEffect(() => {
+    analyzeRef.current = analyze;
+  }, [analyze]);
+
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key !== "r" && e.key !== "R") return;
       if (e.metaKey || e.ctrlKey || e.altKey) return;
-      const t = e.target as HTMLElement | null;
-      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA")) return;
+      const target = e.target as HTMLElement | null;
+      if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA")) return;
       if (loading) return;
       e.preventDefault();
       void analyzeRef.current();
@@ -361,33 +372,19 @@ export default function AnswerReadinessPanel() {
     return () => window.removeEventListener("keydown", handler);
   }, [loading]);
 
-  const handleDismiss = useCallback((id: string) => {
-    setDismissedIds((prev) => {
-      const next = new Set(prev);
-      next.add(id);
-      return next;
+  const handleDismiss = useCallback((findingId: string) => {
+    setResult((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        categories: prev.categories.map((cat) => ({
+          ...cat,
+          findings: cat.findings.filter((f) => f.id !== findingId),
+        })),
+        findings: prev.findings.filter((f) => f.id !== findingId),
+      };
     });
   }, []);
-
-  const handleRestore = useCallback((id: string) => {
-    setDismissedIds((prev) => {
-      const next = new Set(prev);
-      next.delete(id);
-      return next;
-    });
-  }, []);
-
-  const handleOpenCategory = useCallback((category: string) => {
-    setView(category);
-  }, []);
-
-  const detailCategory = useMemo(() => {
-    if (!result) return null;
-    if (view === "priority" || view === "overview") return null;
-    return result.categories.find((c) => c.category === view) ?? null;
-  }, [result, view]);
-
-  const isLowScore = result?.score !== null && result?.score !== undefined && result.score < 35;
 
   if (clientError) {
     return (
@@ -400,8 +397,11 @@ export default function AnswerReadinessPanel() {
   }
 
   const pageId = page?.id ?? page?.itemId;
-  const resultsAreCurrent = result !== null && resultPageId !== null && resultPageId === pageId;
-  const canAnalyze = Boolean(isInitialized && client && pageId && !loading);
+  const resultsAreCurrent =
+    result !== null && resultPageId !== null && resultPageId === pageId;
+  const canAnalyze = Boolean(
+    isInitialized && client && pageId && sitecoreContextId && !loading
+  );
 
   return (
     <div className="flex min-h-full flex-col gap-3 bg-slate-50 p-3.5">
@@ -414,7 +414,8 @@ export default function AnswerReadinessPanel() {
             Answer Readiness
           </h1>
         </div>
-        <div className="flex shrink-0 items-center gap-1">
+
+        <div className="flex shrink-0 items-center gap-1.5">
           <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[10px] font-medium text-slate-600">
             AEO / GEO
           </span>
@@ -438,7 +439,15 @@ export default function AnswerReadinessPanel() {
             {loading ? (
               <span className="h-3 w-3 animate-spin rounded-full border-2 border-slate-300 border-t-slate-700" />
             ) : (
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-3.5 w-3.5">
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className="h-3.5 w-3.5"
+              >
                 <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" />
                 <path d="M21 3v5h-5" />
                 <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" />
@@ -451,7 +460,7 @@ export default function AnswerReadinessPanel() {
               iconOnly
               summary={buildSummaryReport(result, page)}
               checklist={buildChecklist(result)}
-              full={buildFullReport(result, page)}
+              full={buildReport(result, page)}
             />
           )}
         </div>
@@ -472,7 +481,7 @@ export default function AnswerReadinessPanel() {
                     className="text-[9.5px] font-medium text-slate-400"
                     title={new Date(result.analyzedAt).toLocaleString()}
                   >
-                    · analyzed {formatRelativeTime(result.analyzedAt)}
+                    · published HTML
                   </span>
                 )}
               </div>
@@ -499,13 +508,19 @@ export default function AnswerReadinessPanel() {
         <section className="rounded-xl border border-slate-200 bg-white p-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
           <div className="flex items-center gap-2">
             <span className="h-3 w-3 animate-spin rounded-full border-2 border-slate-300 border-t-slate-700" />
-            <span className="text-[11px] font-medium text-slate-600">Analyzing page…</span>
+            <span className="text-[11px] font-medium text-slate-600">
+              Analyzing page…
+            </span>
           </div>
         </section>
       )}
 
       {message && (
-        <Banner variant="error" message={message} onRetry={() => void analyzeRef.current()} />
+        <Banner
+          variant="error"
+          message={message}
+          onRetry={() => void analyzeRef.current()}
+        />
       )}
 
       {resultsAreCurrent && result.mode === "diagnostic" && (
@@ -516,28 +531,11 @@ export default function AnswerReadinessPanel() {
         />
       )}
 
-      {resultsAreCurrent && result.mode === "scored" && detailCategory && (
-        <CategoryDetail
-          category={detailCategory}
-          dismissedIds={dismissedIds}
-          onDismiss={handleDismiss}
-          onRestore={handleRestore}
-          onBack={() => setView(isLowScore ? "priority" : "overview")}
-        />
-      )}
-
-      {resultsAreCurrent && result.mode === "scored" && !detailCategory && (
+      {resultsAreCurrent && result.mode === "scored" && (
         <>
-          <ScorePanel
-            result={result}
-            diff={diff}
-            activeTab={view === "priority" ? "priority" : "overview"}
-            onTabChange={(tab) => setView(tab)}
-            hideTabs={isLowScore}
-          />
+          <ScoreCard result={result} previousScore={previousScore} />
 
-          {(editCount > 0 ||
-            now - new Date(result.analyzedAt).getTime() > 300000) && (
+          {editCount > 0 && (
             <Banner
               variant="stale"
               analyzedAt={result.analyzedAt}
@@ -546,30 +544,27 @@ export default function AnswerReadinessPanel() {
             />
           )}
 
-          {view === "priority" && (
-            <>
-              {isLowScore && (
-                <HeroFix result={result} onOpenCategory={handleOpenCategory} />
-              )}
-              <div className="px-0.5 text-[9.5px] font-bold uppercase tracking-[0.08em] text-slate-400">
-                All fixes
-              </div>
-              <PriorityList
-                result={result}
-                onOpenCategory={handleOpenCategory}
-                dismissedIds={dismissedIds}
-              />
-            </>
-          )}
+          <PriorityCard
+            result={result}
+            onExpandCategory={(cat) => setExpandedCategory(cat)}
+          />
 
-          {view === "overview" && !isLowScore && (
-            <CategoryGrid result={result} onOpenCategory={handleOpenCategory} />
-          )}
+          {result.categories.map((category) => (
+            <CategoryCard
+              key={category.category}
+              category={category}
+              forceExpanded={expandedCategory === category.category}
+              dismissedIds={new Set()}
+              onDismiss={handleDismiss}
+            />
+          ))}
 
-          <p className="text-center text-[9.5px] leading-relaxed text-slate-400">
-            {result.source.wordCount} words · {result.source.headingCount} headings ·{" "}
-            {result.source.paragraphCount} paragraphs
-          </p>
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-[9.5px] leading-relaxed text-slate-400">
+              {result.source.wordCount} words · {result.source.headingCount} headings ·{" "}
+              {result.source.paragraphCount} paragraphs
+            </p>
+          </div>
         </>
       )}
 
