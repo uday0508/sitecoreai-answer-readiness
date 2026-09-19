@@ -7,7 +7,14 @@ interface Props {
   onOpenCategory: (category: string) => void;
 }
 
-function scoreColors(score: number, max: number) {
+function scoreColors(score: number, max: number, unevaluated: boolean) {
+  if (unevaluated)
+    return {
+      bar: "bg-slate-300",
+      text: "text-slate-500",
+      bg: "bg-slate-50/60",
+      border: "border-slate-200",
+    };
   const ratio = max > 0 ? score / max : 0;
   if (ratio === 1)
     return { bar: "bg-emerald-500", text: "text-emerald-700", bg: "bg-emerald-50/40", border: "border-emerald-200" };
@@ -31,9 +38,10 @@ export default function CategoryGrid({ result, onOpenCategory }: Props) {
       </div>
       <div className="grid grid-cols-2 gap-2">
         {result.categories.map((cat) => {
-          const colors = scoreColors(cat.score, cat.maxScore);
+          const unevaluated = cat.status === "insufficient-content";
+          const colors = scoreColors(cat.score, cat.maxScore, unevaluated);
           const finding = topFinding(cat);
-          const isPerfect = cat.score === cat.maxScore && cat.status === "evaluated";
+          const isPerfect = cat.score === cat.maxScore && !unevaluated;
 
           return (
             <button
@@ -44,8 +52,16 @@ export default function CategoryGrid({ result, onOpenCategory }: Props) {
             >
               <div className="flex w-full items-start justify-between gap-1">
                 <span className={`text-[13px] font-bold ${colors.text}`}>
-                  {cat.score}
-                  <span className="text-[9.5px] font-medium text-slate-400">/{cat.maxScore}</span>
+                  {unevaluated ? (
+                    <span className="text-[10px] font-semibold">N/A</span>
+                  ) : (
+                    <>
+                      {cat.score}
+                      <span className="text-[9.5px] font-medium text-slate-400">
+                        /{cat.maxScore}
+                      </span>
+                    </>
+                  )}
                 </span>
                 {isPerfect && (
                   <span className="flex h-3.5 w-3.5 items-center justify-center rounded-full bg-emerald-500 text-white">
@@ -62,6 +78,11 @@ export default function CategoryGrid({ result, onOpenCategory }: Props) {
                     </svg>
                   </span>
                 )}
+                {unevaluated && (
+                  <span className="flex h-3.5 w-3.5 items-center justify-center rounded-full bg-slate-200 text-[8.5px] font-bold text-slate-500">
+                    ?
+                  </span>
+                )}
               </div>
 
               <div className="text-[9.5px] font-bold uppercase tracking-wide text-slate-500">
@@ -69,20 +90,32 @@ export default function CategoryGrid({ result, onOpenCategory }: Props) {
               </div>
 
               <div className="min-h-[24px] text-[10px] leading-snug text-slate-600">
-                {isPerfect
+                {unevaluated
+                  ? "Not enough content"
+                  : isPerfect
                   ? "All checks passed"
                   : finding
                   ? finding.title
-                  : cat.status === "insufficient-content"
-                  ? "Not enough content"
                   : "No issues"}
               </div>
 
               <div className="h-1 w-full overflow-hidden rounded-full bg-slate-100">
-                <div
-                  className={`h-full rounded-full ${colors.bar}`}
-                  style={{ width: `${Math.round((cat.score / cat.maxScore) * 100)}%` }}
-                />
+                {unevaluated ? (
+                  <div
+                    className="h-full w-full"
+                    style={{
+                      backgroundImage:
+                        "repeating-linear-gradient(45deg, #cbd5e1 0 3px, transparent 3px 6px)",
+                    }}
+                  />
+                ) : (
+                  <div
+                    className={`h-full rounded-full ${colors.bar}`}
+                    style={{
+                      width: `${Math.round((cat.score / cat.maxScore) * 100)}%`,
+                    }}
+                  />
+                )}
               </div>
             </button>
           );

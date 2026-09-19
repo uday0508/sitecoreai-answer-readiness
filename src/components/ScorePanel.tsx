@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import type { AnalysisResult, AnalysisDiff } from "@/src/types/analysis";
 
 interface Props {
@@ -18,10 +19,24 @@ const SHORT_LABELS: Record<string, string> = {
   "faq-readiness": "FAQ",
 };
 
+const READINESS_TOOLTIPS: Record<string, string> = {
+  "Good readiness":
+    "The page contains most of the AEO/GEO signals AI answer engines look for.",
+  "Needs improvement":
+    "Some signals are missing. The page can be more answer-extractable before publishing.",
+  "Significant gaps":
+    "Multiple AEO/GEO signals are missing. AI answer engines may not extract usable content.",
+  "Not answer-ready":
+    "Critical content structure is missing. The page is unlikely to be extractable as an answer.",
+};
+
 function readinessMeta(score: number) {
-  if (score >= 80) return { label: "Good readiness", tone: "text-emerald-600", stroke: "#059669" };
-  if (score >= 60) return { label: "Needs improvement", tone: "text-amber-600", stroke: "#d97706" };
-  if (score >= 35) return { label: "Significant gaps", tone: "text-orange-600", stroke: "#ea580c" };
+  if (score >= 80)
+    return { label: "Good readiness", tone: "text-emerald-600", stroke: "#059669" };
+  if (score >= 60)
+    return { label: "Needs improvement", tone: "text-amber-600", stroke: "#d97706" };
+  if (score >= 35)
+    return { label: "Significant gaps", tone: "text-orange-600", stroke: "#ea580c" };
   return { label: "Not answer-ready", tone: "text-red-600", stroke: "#dc2626" };
 }
 
@@ -39,6 +54,8 @@ export default function ScorePanel({
   onTabChange,
   hideTabs = false,
 }: Props) {
+  const [showLabelTooltip, setShowLabelTooltip] = useState(false);
+
   const score = result.score ?? 0;
   const { label, tone, stroke } = readinessMeta(score);
   const radius = 26;
@@ -51,7 +68,6 @@ export default function ScorePanel({
   const totalActionable = criticalCount + warningCount;
 
   const tier = nextTierInfo(score);
-
   const delta = diff?.scoreDelta ?? null;
 
   return (
@@ -81,12 +97,28 @@ export default function ScorePanel({
 
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1.5">
-            <span className={`text-[12.5px] font-semibold ${tone}`}>{label}</span>
+            <div
+              className="relative"
+              onMouseEnter={() => setShowLabelTooltip(true)}
+              onMouseLeave={() => setShowLabelTooltip(false)}
+            >
+              <span
+                className={`cursor-help border-b border-dotted border-current text-[12.5px] font-semibold ${tone}`}
+              >
+                {label}
+              </span>
+              {showLabelTooltip && (
+                <div className="absolute left-0 top-full z-20 mt-1 w-56 rounded-lg border border-slate-200 bg-white p-2 text-[10px] leading-relaxed text-slate-600 shadow-lg">
+                  {READINESS_TOOLTIPS[label]}
+                </div>
+              )}
+            </div>
             {delta !== null && delta !== 0 && (
               <span
                 className={`flex items-center gap-0.5 rounded-md px-1.5 py-0.5 text-[9.5px] font-semibold ${
                   delta > 0 ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-700"
                 }`}
+                title={`${delta > 0 ? "+" : ""}${delta} vs previous analysis`}
               >
                 <svg
                   viewBox="0 0 24 24"
@@ -120,7 +152,7 @@ export default function ScorePanel({
       </div>
 
       {diff && diff.entries.length > 0 && (diff.resolvedCount > 0 || diff.newCount > 0) && (
-        <div className="mt-3 flex items-center gap-3 border-t border-slate-100 pt-2.5">
+        <div className="mt-2.5 flex items-center gap-3 border-t border-slate-100 pt-2.5">
           {diff.resolvedCount > 0 && (
             <span className="flex items-center gap-1 text-[10px] font-medium text-emerald-700">
               <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
@@ -131,6 +163,12 @@ export default function ScorePanel({
             <span className="flex items-center gap-1 text-[10px] font-medium text-amber-700">
               <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
               {diff.newCount} new
+            </span>
+          )}
+          {diff.unchangedCount > 0 && (
+            <span className="flex items-center gap-1 text-[10px] font-medium text-slate-500">
+              <span className="h-1.5 w-1.5 rounded-full bg-slate-300" />
+              {diff.unchangedCount} unchanged
             </span>
           )}
         </div>
@@ -166,25 +204,47 @@ export default function ScorePanel({
       <div className="mt-3.5 grid grid-cols-5 gap-1.5">
         {result.categories.map((cat) => {
           const ratio = cat.maxScore > 0 ? cat.score / cat.maxScore : 0;
-          const barColor =
-            ratio === 1 ? "bg-emerald-500" : ratio >= 0.6 ? "bg-amber-500" : "bg-red-500";
-          const labelColor =
-            ratio === 1
-              ? "text-emerald-700"
-              : ratio >= 0.6
-              ? "text-amber-700"
-              : "text-red-700";
+          const unevaluated = cat.status === "insufficient-content";
+          const barColor = unevaluated
+            ? "bg-slate-300"
+            : ratio === 1
+            ? "bg-emerald-500"
+            : ratio >= 0.6
+            ? "bg-amber-500"
+            : "bg-red-500";
+          const labelColor = unevaluated
+            ? "text-slate-400"
+            : ratio === 1
+            ? "text-emerald-700"
+            : ratio >= 0.6
+            ? "text-amber-700"
+            : "text-red-700";
+
           return (
             <div
               key={cat.category}
               className="flex flex-col items-center gap-1"
-              title={`${cat.label}: ${cat.score}/${cat.maxScore}`}
+              title={
+                unevaluated
+                  ? `${cat.label}: not enough content to evaluate`
+                  : `${cat.label}: ${cat.score}/${cat.maxScore}`
+              }
             >
               <div className="h-1 w-full overflow-hidden rounded-full bg-slate-100">
-                <div
-                  className={`h-full rounded-full ${barColor}`}
-                  style={{ width: `${Math.round(ratio * 100)}%` }}
-                />
+                {unevaluated ? (
+                  <div
+                    className="h-full w-full"
+                    style={{
+                      backgroundImage:
+                        "repeating-linear-gradient(45deg, #cbd5e1 0 3px, transparent 3px 6px)",
+                    }}
+                  />
+                ) : (
+                  <div
+                    className={`h-full rounded-full ${barColor}`}
+                    style={{ width: `${Math.round(ratio * 100)}%` }}
+                  />
+                )}
               </div>
               <span className={`text-[9px] font-semibold uppercase tracking-wide ${labelColor}`}>
                 {SHORT_LABELS[cat.category] ?? cat.label}

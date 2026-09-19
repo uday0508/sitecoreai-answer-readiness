@@ -11,6 +11,7 @@ import type {
   SiteInfo,
 } from "@/src/types/analysis";
 import { computeDiff } from "@/src/lib/analysis/diff";
+import { formatRelativeTime } from "@/src/lib/format";
 import ScorePanel from "./ScorePanel";
 import PriorityList from "./PriorityList";
 import CategoryGrid from "./CategoryGrid";
@@ -125,6 +126,7 @@ export default function AnswerReadinessPanel() {
   const [view, setView] = useState<View>("priority");
   const [dismissedIds, setDismissedIds] = useState<Set<string>>(new Set());
   const [helpOpen, setHelpOpen] = useState(false);
+  const [now, setNow] = useState(Date.now());
 
   const activePageIdRef = useRef<string | null>(null);
   const analyzeAbortRef = useRef<AbortController | null>(null);
@@ -139,6 +141,12 @@ export default function AnswerReadinessPanel() {
   useEffect(() => { pageRef.current = page; }, [page]);
   useEffect(() => { siteRef.current = site; }, [site]);
   useEffect(() => { resultPageIdRef.current = resultPageId; }, [resultPageId]);
+
+  // Tick for relative time updates
+  useEffect(() => {
+    const interval = setInterval(() => setNow(Date.now()), 15000);
+    return () => clearInterval(interval);
+  }, []);
 
   const waitForCanvasUpdate = useCallback(
     async (
@@ -228,14 +236,13 @@ export default function AnswerReadinessPanel() {
       if (controller.signal.aborted || activePageIdRef.current !== analyzedId) return;
 
       const previous = lastResultByPageRef.current.get(analyzedId) ?? null;
-      const nextDiff = computeDiff(previous, next);
-      setDiff(nextDiff);
+      setDiff(computeDiff(previous, next));
       lastResultByPageRef.current.set(analyzedId, next);
 
       setResult(next);
       setResultPageId(analyzedId);
       setDismissedIds(new Set());
-      setView(next.score !== null && next.score < 35 ? "priority" : "priority");
+      setNow(Date.now());
     } catch (e) {
       if (controller.signal.aborted || activePageIdRef.current !== analyzedId) return;
       setMessage(e instanceof Error ? e.message : "Analysis failed.");
@@ -456,8 +463,18 @@ export default function AnswerReadinessPanel() {
         <section className="rounded-xl border border-slate-200 bg-white p-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
           <div className="flex items-start justify-between gap-2">
             <div className="min-w-0 flex-1">
-              <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-500">
-                Current page
+              <div className="flex items-center gap-1.5">
+                <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-500">
+                  Current page
+                </span>
+                {resultsAreCurrent && (
+                  <span
+                    className="text-[9.5px] font-medium text-slate-400"
+                    title={new Date(result.analyzedAt).toLocaleString()}
+                  >
+                    · analyzed {formatRelativeTime(result.analyzedAt)}
+                  </span>
+                )}
               </div>
               <div className="mt-1 space-y-0.5">
                 <div className="truncate text-[12.5px] font-semibold text-slate-900">
@@ -520,7 +537,7 @@ export default function AnswerReadinessPanel() {
           />
 
           {(editCount > 0 ||
-            Date.now() - new Date(result.analyzedAt).getTime() > 300000) && (
+            now - new Date(result.analyzedAt).getTime() > 300000) && (
             <Banner
               variant="stale"
               analyzedAt={result.analyzedAt}

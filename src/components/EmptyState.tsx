@@ -20,9 +20,24 @@ export default function EmptyState() {
       <div className="mt-2 text-[12px] font-semibold text-slate-900">
         Waiting for Page Builder
       </div>
-      <p className="mt-0.5 text-[10.5px] leading-relaxed text-slate-500">
+      <p className="mt-1 text-[10.5px] leading-relaxed text-slate-500">
         Open a page in Page Builder to analyze its answer readiness.
       </p>
+      <div className="mt-2.5 inline-flex items-center gap-1 rounded-md bg-slate-50 px-2 py-1 text-[9.5px] font-medium text-slate-600 ring-1 ring-inset ring-slate-200">
+        <svg
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          className="h-2.5 w-2.5"
+        >
+          <path d="M12 5v14" />
+          <path d="M5 12h14" />
+        </svg>
+        This panel lives in the Pages Context Panel
+      </div>
     </section>
   );
 }
