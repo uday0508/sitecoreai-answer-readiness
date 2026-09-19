@@ -1,10 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { CategoryResult, AnalysisFinding } from "@/src/types/analysis";
 
 interface Props {
   category: CategoryResult;
+  forceExpanded?: boolean;
 }
 
 const CATEGORY_HELP: Record<string, string> = {
@@ -39,12 +40,16 @@ function scorePill(score: number, max: number) {
   return "bg-red-50 text-red-700 ring-red-200";
 }
 
-export default function CategoryCard({ category }: Props) {
+export default function CategoryCard({ category, forceExpanded }: Props) {
   const actionable = category.findings.filter((f) => f.severity !== "pass");
   const passed = category.findings.filter((f) => f.severity === "pass");
   const isAllPass = actionable.length === 0 && category.status === "evaluated";
   const isInsufficient = category.status === "insufficient-content";
   const [expanded, setExpanded] = useState(!isAllPass);
+
+  useEffect(() => {
+    if (forceExpanded) setExpanded(true);
+  }, [forceExpanded]);
 
   const ordered = [...actionable, ...passed];
 

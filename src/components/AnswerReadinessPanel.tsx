@@ -12,15 +12,13 @@ import type {
 import ScoreCard from "./ScoreCard";
 import CategoryCard from "./CategoryCard";
 import DiagnosticCard from "./DiagnosticCard";
-import StaleBanner from "./StaleBanner";
+import PriorityCard from "./PriorityCard";
+import Banner from "./Banner";
 import CopyButton from "./CopyButton";
-import ErrorBanner from "./ErrorBanner";
+import EmptyState from "./EmptyState";
 
-/** How long to wait after a page change before first getPageHTML() call. */
 const SETTLE_MS = 1500;
-/** Max wait for the canvas to actually change. */
 const MAX_WAIT_MS = 8000;
-/** Interval between retries while waiting for the canvas. */
 const RETRY_INTERVAL_MS = 500;
 
 function resolveSiteOrigin(
@@ -31,27 +29,44 @@ function resolveSiteOrigin(
     const scheme = siteInfo.scheme ?? "https";
     try {
       const url = new URL(`${scheme}://${siteInfo.targetHostname}`);
-      if (url.protocol === "http:" || url.protocol === "https:") {
-        return url.origin;
-      }
-    } catch {
-      /* fall through */
-    }
+      if (url.protocol === "http:" || url.protocol === "https:") return url.origin;
+    } catch { /* fall through */ }
   }
   if (pageInfo?.url) {
     try {
       const url = new URL(pageInfo.url);
-      if (url.protocol === "http:" || url.protocol === "https:") {
-        return url.origin;
-      }
-    } catch {
-      /* fall through */
-    }
+      if (url.protocol === "http:" || url.protocol === "https:") return url.origin;
+    } catch { /* fall through */ }
   }
   return null;
 }
 
-function buildReport(result: AnalysisResult, page: PageInfo | null): string {
+function buildSummaryReport(result: AnalysisResult, page: PageInfo | null): string {
+  const lines: string[] = [];
+  lines.push(`Answer Readiness — ${page?.displayName ?? page?.name ?? "Untitled"}`);
+  if (result.mode === "scored" && result.score !== null) {
+    lines.push(`Score: ${result.score}/100`);
+  } else {
+    lines.push("Status: Not enough content to score");
+  }
+
+  const top = result.findings
+    .filter((f) => f.severity === "error" || f.severity === "warning")
+    .sort((a, b) => b.scoreImpact - a.scoreImpact)
+    .slice(0, 5);
+
+  if (top.length > 0) {
+    lines.push("");
+    lines.push("Top fixes:");
+    top.forEach((f, i) => {
+      lines.push(`${i + 1}. ${f.title}`);
+      lines.push(`   ${f.recommendation}`);
+    });
+  }
+  return lines.join("\n");
+}
+
+function buildFullReport(result: AnalysisResult, page: PageInfo | null): string {
   const lines: string[] = [];
   lines.push("SitecoreAI Answer Readiness");
   lines.push("");
@@ -88,6 +103,28 @@ function buildReport(result: AnalysisResult, page: PageInfo | null): string {
   return lines.join("\n");
 }
 
+function buildChecklist(result: AnalysisResult): string {
+  const lines: string[] = [];
+  lines.push("# Answer Readiness Fixes");
+  lines.push("");
+
+  for (const cat of result.categories) {
+    const actionable = cat.findings.filter(
+      (f) => f.severity === "error" || f.severity === "warning"
+    );
+    if (actionable.length === 0) continue;
+
+    lines.push(`## ${cat.label}`);
+    for (const f of actionable) {
+      lines.push(`- [ ] ${f.title}`);
+      lines.push(`      ${f.recommendation}`);
+    }
+    lines.push("");
+  }
+
+  return lines.join("\n");
+}
+
 export default function AnswerReadinessPanel() {
   const { client, error: clientError, isInitialized } = useMarketplaceClient();
   const [page, setPage] = useState<PageInfo | null>(null);
@@ -96,35 +133,24 @@ export default function AnswerReadinessPanel() {
   const [resultPageId, setResultPageId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
-  const [contentEditedSinceAnalysis, setContentEditedSinceAnalysis] = useState(false);
+  const [editCount, setEditCount] = useState(0);
+  const [previousScore, setPreviousScore] = useState<number | null>(null);
+  const [expandedCategory, setExpandedCategory] = useState<string | null>(null);
 
   const activePageIdRef = useRef<string | null>(null);
   const analyzeAbortRef = useRef<AbortController | null>(null);
   const settleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const previousHtmlRef = useRef<string>("");
   const resultPageIdRef = useRef<string | null>(null);
-  const analyzeRef = useRef<() => Promise<void>>(async () => {});
+  const analyzeRef = useRef<() => Promise<void>>(async () => { });
   const pageRef = useRef<PageInfo | null>(null);
   const siteRef = useRef<SiteInfo | null>(null);
+  const lastScoreByPageRef = useRef<Map<string, number>>(new Map());
 
-  // Keep refs in sync with state so the coordination effect never needs to re-run.
-  useEffect(() => {
-    pageRef.current = page;
-  }, [page]);
+  useEffect(() => { pageRef.current = page; }, [page]);
+  useEffect(() => { siteRef.current = site; }, [site]);
+  useEffect(() => { resultPageIdRef.current = resultPageId; }, [resultPageId]);
 
-  useEffect(() => {
-    siteRef.current = site;
-  }, [site]);
-
-  useEffect(() => {
-    resultPageIdRef.current = resultPageId;
-  }, [resultPageId]);
-
-  /**
-   * Wait for the canvas to reflect the new page.
-   * Repeatedly calls getPageHTML() until the HTML differs from the previous page's HTML,
-   * or until the max wait time elapses.
-   */
   const waitForCanvasUpdate = useCallback(
     async (
       sdk: { getPageHTML?: () => Promise<string> },
@@ -137,19 +163,11 @@ export default function AnswerReadinessPanel() {
         try {
           const html = await sdk.getPageHTML!();
           if (signal.aborted) return null;
-          if (!previousHtml || html !== previousHtml) {
-            return html;
-          }
-        } catch {
-          /* retry */
-        }
+          if (!previousHtml || html !== previousHtml) return html;
+        } catch { /* retry */ }
         await new Promise((r) => setTimeout(r, RETRY_INTERVAL_MS));
       }
-      try {
-        return (await sdk.getPageHTML!()) ?? null;
-      } catch {
-        return null;
-      }
+      try { return (await sdk.getPageHTML!()) ?? null; } catch { return null; }
     },
     []
   );
@@ -167,7 +185,7 @@ export default function AnswerReadinessPanel() {
     const analyzedId = pageId;
     setLoading(true);
     setMessage(null);
-    setContentEditedSinceAnalysis(false);
+    setEditCount(0);
 
     try {
       const sdk = client as unknown as { getPageHTML?: () => Promise<string> };
@@ -177,15 +195,11 @@ export default function AnswerReadinessPanel() {
       }
 
       const html = await waitForCanvasUpdate(sdk, previousHtmlRef.current, controller.signal);
-
-      if (controller.signal.aborted) return;
-      if (activePageIdRef.current !== analyzedId) return;
-
+      if (controller.signal.aborted || activePageIdRef.current !== analyzedId) return;
       if (!html) {
         setMessage("The current page did not return rendered HTML.");
         return;
       }
-
       previousHtmlRef.current = html;
 
       const siteOrigin = resolveSiteOrigin(currentSite, currentPage);
@@ -202,13 +216,10 @@ export default function AnswerReadinessPanel() {
             const data = (await res.json()) as CrawlerStatus;
             if (data.checked) crawler = data;
           }
-        } catch {
-          /* best-effort */
-        }
+        } catch { /* best-effort */ }
       }
 
-      if (controller.signal.aborted) return;
-      if (activePageIdRef.current !== analyzedId) return;
+      if (controller.signal.aborted || activePageIdRef.current !== analyzedId) return;
 
       const analysisRes = await fetch("/api/analyze", {
         method: "POST",
@@ -225,27 +236,27 @@ export default function AnswerReadinessPanel() {
       if (!analysisRes.ok) throw new Error("The analysis service could not process the page.");
       const next = (await analysisRes.json()) as AnalysisResult;
 
-      if (controller.signal.aborted) return;
-      if (activePageIdRef.current !== analyzedId) return;
+      if (controller.signal.aborted || activePageIdRef.current !== analyzedId) return;
+
+      const prior = lastScoreByPageRef.current.get(analyzedId) ?? null;
+      setPreviousScore(prior);
+
+      if (next.mode === "scored" && next.score !== null) {
+        lastScoreByPageRef.current.set(analyzedId, next.score);
+      }
 
       setResult(next);
       setResultPageId(analyzedId);
     } catch (e) {
-      if (controller.signal.aborted) return;
-      if (activePageIdRef.current !== analyzedId) return;
+      if (controller.signal.aborted || activePageIdRef.current !== analyzedId) return;
       setMessage(e instanceof Error ? e.message : "Analysis failed.");
     } finally {
       if (!controller.signal.aborted) setLoading(false);
     }
   }, [client, waitForCanvasUpdate]);
 
-  // Keep analyzeRef in sync so the coordination effect can call the latest analyze
-  // without listing it as a dependency.
-  useEffect(() => {
-    analyzeRef.current = analyze;
-  }, [analyze]);
+  useEffect(() => { analyzeRef.current = analyze; }, [analyze]);
 
-  // Main coordination effect — subscribe ONCE. Never re-runs on state change.
   useEffect(() => {
     if (!isInitialized || !client) return;
     let cancelled = false;
@@ -273,7 +284,9 @@ export default function AnswerReadinessPanel() {
         setResultPageId(null);
         setMessage(null);
         setLoading(false);
-        setContentEditedSinceAnalysis(false);
+        setEditCount(0);
+        setPreviousScore(null);
+        setExpandedCategory(null);
 
         previousHtmlRef.current = "";
         activePageIdRef.current = nextId;
@@ -314,7 +327,7 @@ export default function AnswerReadinessPanel() {
               resultPageIdRef.current &&
               activePageIdRef.current === resultPageIdRef.current
             ) {
-              setContentEditedSinceAnalysis(true);
+              setEditCount((c) => c + 1);
             }
           },
           onError: (err) => console.error("Fields subscription error:", err),
@@ -337,15 +350,12 @@ export default function AnswerReadinessPanel() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [client, isInitialized]);
 
-  // Keyboard shortcut: R to re-analyze
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key !== "r" && e.key !== "R") return;
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       const target = e.target as HTMLElement | null;
-      if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA")) {
-        return;
-      }
+      if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA")) return;
       if (loading) return;
       e.preventDefault();
       void analyzeRef.current();
@@ -412,26 +422,33 @@ export default function AnswerReadinessPanel() {
         </div>
       </header>
 
-      <section className="rounded-xl border border-slate-200 bg-white p-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
-        <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-500">
-          Current page
-        </div>
-        {page ? (
-          <div className="mt-1 space-y-0.5">
-            <div className="truncate text-[12.5px] font-semibold text-slate-900">
-              {page.displayName ?? page.name ?? "Untitled page"}
+      {!page && !loading && <EmptyState />}
+
+      {page && (
+        <section className="rounded-xl border border-slate-200 bg-white p-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+          <div className="flex items-start justify-between gap-2">
+            <div className="min-w-0 flex-1">
+              <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-500">
+                Current page
+              </div>
+              <div className="mt-1 space-y-0.5">
+                <div className="truncate text-[12.5px] font-semibold text-slate-900">
+                  {page.displayName ?? page.name ?? "Untitled page"}
+                </div>
+                {page.path && (
+                  <div className="truncate text-[10px] text-slate-500">{page.path}</div>
+                )}
+              </div>
             </div>
-            {page.path && (
-              <div className="truncate text-[10px] text-slate-500">{page.path}</div>
-            )}
+            <span
+              className="hidden shrink-0 rounded-md border border-slate-200 bg-slate-50 px-1.5 py-0.5 font-mono text-[9px] text-slate-500 sm:inline-block"
+              title="Press R to re-analyze"
+            >
+              R
+            </span>
           </div>
-        ) : (
-          <div className="mt-2 space-y-1.5">
-            <div className="h-3 w-2/3 animate-pulse rounded bg-slate-100" />
-            <div className="h-2.5 w-1/2 animate-pulse rounded bg-slate-100" />
-          </div>
-        )}
-      </section>
+        </section>
+      )}
 
       {loading && !resultsAreCurrent && (
         <section className="rounded-xl border border-slate-200 bg-white p-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
@@ -444,7 +461,9 @@ export default function AnswerReadinessPanel() {
         </section>
       )}
 
-      {message && <ErrorBanner message={message} onRetry={() => void analyzeRef.current()} />}
+      {message && (
+        <Banner variant="error" message={message} onRetry={() => void analyzeRef.current()} />
+      )}
 
       {resultsAreCurrent && result.mode === "diagnostic" && (
         <DiagnosticCard
@@ -456,19 +475,29 @@ export default function AnswerReadinessPanel() {
 
       {resultsAreCurrent && result.mode === "scored" && (
         <>
-          <ScoreCard result={result} />
+          <ScoreCard result={result} previousScore={previousScore} />
 
-          {(contentEditedSinceAnalysis ||
+          {(editCount > 0 ||
             Date.now() - new Date(result.analyzedAt).getTime() > 300000) && (
-            <StaleBanner
-              analyzedAt={result.analyzedAt}
-              onReanalyze={() => void analyzeRef.current()}
-              edited={contentEditedSinceAnalysis}
-            />
-          )}
+              <Banner
+                variant="stale"
+                analyzedAt={result.analyzedAt}
+                edited={editCount > 0}
+                onRetry={() => void analyzeRef.current()}
+              />
+            )}
+
+          <PriorityCard
+            result={result}
+            onExpandCategory={(cat) => setExpandedCategory(cat)}
+          />
 
           {result.categories.map((category) => (
-            <CategoryCard key={category.category} category={category} />
+            <CategoryCard
+              key={category.category}
+              category={category}
+              forceExpanded={expandedCategory === category.category}
+            />
           ))}
 
           <div className="flex items-center justify-between gap-2">
@@ -476,7 +505,11 @@ export default function AnswerReadinessPanel() {
               {result.source.wordCount} words · {result.source.headingCount} headings ·{" "}
               {result.source.paragraphCount} paragraphs
             </p>
-            <CopyButton text={buildReport(result, page)} />
+            <CopyButton
+              summary={buildSummaryReport(result, page)}
+              checklist={buildChecklist(result)}
+              full={buildFullReport(result, page)}
+            />
           </div>
         </>
       )}

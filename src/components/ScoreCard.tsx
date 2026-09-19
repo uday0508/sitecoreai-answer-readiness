@@ -4,8 +4,7 @@ import type { AnalysisResult } from "@/src/types/analysis";
 
 interface Props {
   result: AnalysisResult;
-  onReanalyze: () => void;
-  loading: boolean;
+  previousScore?: number | null;
 }
 
 function readinessMeta(score: number) {
@@ -18,7 +17,15 @@ function readinessMeta(score: number) {
   return { label: "Not answer-ready", tone: "text-red-600", stroke: "#dc2626" };
 }
 
-export default function ScoreCard({ result }: Props) {
+const SHORT_LABELS: Record<string, string> = {
+  "answer-structure": "Structure",
+  "passage-integrity": "Passage",
+  "factual-density": "Facts",
+  "entity-clarity": "Entity",
+  "faq-readiness": "FAQ",
+};
+
+export default function ScoreCard({ result, previousScore }: Props) {
   const score = result.score ?? 0;
   const { label, tone, stroke } = readinessMeta(score);
   const radius = 26;
@@ -28,6 +35,11 @@ export default function ScoreCard({ result }: Props) {
   const actionableCount = result.findings.filter(
     (f) => f.severity === "warning" || f.severity === "error"
   ).length;
+
+  const delta =
+    typeof previousScore === "number" && previousScore !== null
+      ? score - previousScore
+      : null;
 
   return (
     <section className="rounded-xl border border-slate-200 bg-white p-3.5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
@@ -57,13 +69,78 @@ export default function ScoreCard({ result }: Props) {
         </div>
 
         <div className="min-w-0 flex-1">
-          <div className={`text-[12.5px] font-semibold ${tone}`}>{label}</div>
+          <div className="flex items-center gap-1.5">
+            <span className={`text-[12.5px] font-semibold ${tone}`}>{label}</span>
+            {delta !== null && delta !== 0 && (
+              <span
+                className={`flex items-center gap-0.5 rounded-md px-1.5 py-0.5 text-[9.5px] font-semibold ${
+                  delta > 0
+                    ? "bg-emerald-50 text-emerald-700"
+                    : "bg-red-50 text-red-700"
+                }`}
+              >
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="3"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  className={`h-2.5 w-2.5 ${delta < 0 ? "rotate-180" : ""}`}
+                >
+                  <path d="M12 19V5" />
+                  <path d="m5 12 7-7 7 7" />
+                </svg>
+                {delta > 0 ? "+" : ""}
+                {delta}
+              </span>
+            )}
+          </div>
           <p className="mt-0.5 text-[10px] leading-snug text-slate-500">
             {actionableCount > 0
               ? `${actionableCount} issue${actionableCount === 1 ? "" : "s"} to fix`
               : "No issues detected"}
           </p>
         </div>
+      </div>
+
+      {/* Score breakdown — label under its own bar, structural alignment */}
+      <div className="mt-3.5 grid grid-cols-5 gap-1.5">
+        {result.categories.map((cat) => {
+          const ratio = cat.maxScore > 0 ? cat.score / cat.maxScore : 0;
+          const barColor =
+            ratio === 1
+              ? "bg-emerald-500"
+              : ratio >= 0.6
+              ? "bg-amber-500"
+              : "bg-red-500";
+          const labelColor =
+            ratio === 1
+              ? "text-emerald-700"
+              : ratio >= 0.6
+              ? "text-amber-700"
+              : "text-red-700";
+
+          return (
+            <div
+              key={cat.category}
+              className="flex flex-col items-center gap-1"
+              title={`${cat.label}: ${cat.score}/${cat.maxScore}`}
+            >
+              <div className="h-1 w-full overflow-hidden rounded-full bg-slate-100">
+                <div
+                  className={`h-full rounded-full ${barColor}`}
+                  style={{ width: `${Math.round(ratio * 100)}%` }}
+                />
+              </div>
+              <span
+                className={`text-[9px] font-semibold uppercase tracking-wide ${labelColor}`}
+              >
+                {SHORT_LABELS[cat.category] ?? cat.label}
+              </span>
+            </div>
+          );
+        })}
       </div>
     </section>
   );
