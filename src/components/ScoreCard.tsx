@@ -45,8 +45,9 @@ export default function ScoreCard({ result, previousScore, diff }: Props) {
 
   return (
     <section className="rounded-xl border border-slate-200 bg-white p-3.5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
-      <div className="flex items-center gap-3.5">
-        <div className="relative h-[62px] w-[62px] shrink-0">
+      <div className="flex flex-col items-center gap-2.5">
+        {/* Score ring */}
+        <div className="relative h-[70px] w-[70px] shrink-0">
           <svg viewBox="0 0 64 64" className="h-full w-full -rotate-90">
             <circle cx="32" cy="32" r={radius} fill="none" stroke="#e2e8f0" strokeWidth="4" />
             <circle
@@ -63,19 +64,21 @@ export default function ScoreCard({ result, previousScore, diff }: Props) {
             />
           </svg>
           <div className="absolute inset-0 flex flex-col items-center justify-center">
-            <span className="text-[16px] font-bold leading-none text-slate-900">{score}</span>
-            <span className="mt-0.5 text-[8.5px] font-medium text-slate-400">/100</span>
+            <span className="text-[18px] font-bold leading-none text-slate-900">
+              {result.score}
+            </span>
+            <span className="mt-0.5 text-[9px] font-medium text-slate-400">/100</span>
           </div>
         </div>
 
-        <div className="min-w-0 flex-1">
+        {/* Label and note, centered */}
+        <div className="flex flex-col items-center text-center">
           <div className="flex items-center gap-1.5">
-            <span className={`text-[12.5px] font-semibold ${tone}`}>{label}</span>
+            <span className={`text-[13px] font-semibold ${tone}`}>{label}</span>
             {delta !== null && delta !== 0 && (
               <span
-                className={`flex items-center gap-0.5 rounded-md px-1.5 py-0.5 text-[9.5px] font-semibold ${
-                  delta > 0 ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-700"
-                }`}
+                className={`flex items-center gap-0.5 rounded-md px-1.5 py-0.5 text-[9.5px] font-semibold ${delta > 0 ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-700"
+                  }`}
               >
                 <svg
                   viewBox="0 0 24 24"
@@ -102,30 +105,8 @@ export default function ScoreCard({ result, previousScore, diff }: Props) {
         </div>
       </div>
 
-      {diff && diff.entries.length > 0 && (diff.resolvedCount > 0 || diff.newCount > 0) && (
-        <div className="mt-3 flex items-center gap-3 border-t border-slate-100 pt-2.5">
-          {diff.resolvedCount > 0 && (
-            <span className="flex items-center gap-1 text-[10px] font-medium text-emerald-700">
-              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-              {diff.resolvedCount} resolved
-            </span>
-          )}
-          {diff.newCount > 0 && (
-            <span className="flex items-center gap-1 text-[10px] font-medium text-amber-700">
-              <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
-              {diff.newCount} new
-            </span>
-          )}
-          {diff.unchangedCount > 0 && (
-            <span className="flex items-center gap-1 text-[10px] font-medium text-slate-500">
-              <span className="h-1.5 w-1.5 rounded-full bg-slate-300" />
-              {diff.unchangedCount} unchanged
-            </span>
-          )}
-        </div>
-      )}
-
-      <div className="mt-3.5 grid grid-cols-5 gap-1.5">
+      {/* Category breakdown — unchanged */}
+      <div className="mt-4 grid grid-cols-5 gap-1.5">
         {result.categories.map((cat) => {
           const ratio = cat.maxScore > 0 ? cat.score / cat.maxScore : 0;
           const barColor =
@@ -134,8 +115,8 @@ export default function ScoreCard({ result, previousScore, diff }: Props) {
             ratio === 1
               ? "text-emerald-700"
               : ratio >= 0.6
-              ? "text-amber-700"
-              : "text-red-700";
+                ? "text-amber-700"
+                : "text-red-700";
           return (
             <div
               key={cat.category}
@@ -148,9 +129,7 @@ export default function ScoreCard({ result, previousScore, diff }: Props) {
                   style={{ width: `${Math.round(ratio * 100)}%` }}
                 />
               </div>
-              <span
-                className={`text-[9px] font-semibold uppercase tracking-wide ${labelColor}`}
-              >
+              <span className={`text-[9px] font-semibold uppercase tracking-wide ${labelColor}`}>
                 {SHORT_LABELS[cat.category] ?? cat.label}
               </span>
             </div>

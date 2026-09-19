@@ -1,26 +1,30 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { CategoryResult, AnalysisFinding } from "@/src/types/analysis";
+import type {
+  CategoryResult,
+  AnalysisFinding,
+  FindingSeverity,
+} from "@/src/types/analysis";
+import type { SeverityFilter } from "./AnswerReadinessPanel";
 
 interface Props {
   category: CategoryResult;
   forceExpanded?: boolean;
-  dismissedIds: Set<string>;
-  onDismiss: (findingId: string) => void;
+  severityFilter: SeverityFilter;
 }
 
 const CATEGORY_HELP: Record<string, string> = {
   "answer-structure":
-    "AI systems extract direct answers from headings and opening paragraphs.",
+    "AI systems extract direct answers from headings and opening paragraphs. Question-form headings map cleanly to how users ask.",
   "passage-integrity":
-    "AI retrieves passages, not pages. Context-dependent fragments break.",
+    "AI retrieves passages, not pages. If a section depends on the one above it, the extracted fragment becomes unusable.",
   "factual-density":
-    "Concrete claims — numbers, dates, comparisons — are quoted preferentially.",
+    "Concrete claims — numbers, dates, comparisons — are preferentially quoted by AI answer engines over vague prose.",
   "entity-clarity":
-    "Clear entity definition and authorship help AI attribute claims.",
+    "Clear entity definition and authorship signals help AI attribute claims to the right source.",
   "faq-readiness":
-    "FAQPage schema mirrors Q&A extraction, the strongest citation signal.",
+    "FAQPage schema is the one structured data type consistently correlated with AI citation because it mirrors Q&A extraction.",
 };
 
 const LEVEL_LABEL: Record<string, string> = {
@@ -30,23 +34,30 @@ const LEVEL_LABEL: Record<string, string> = {
   unknown: "",
 };
 
-const LEVEL_COLOR: Record<string, string> = {
-  page: "bg-slate-100 text-slate-600",
-  layout: "bg-slate-100 text-slate-600",
-  component: "bg-slate-100 text-slate-600",
-  unknown: "",
-};
-
-function severityDot(severity: AnalysisFinding["severity"]) {
+function severityDot(severity: FindingSeverity) {
   switch (severity) {
-    case "pass":
-      return "bg-emerald-500";
-    case "warning":
-      return "bg-amber-500";
-    case "error":
-      return "bg-red-500";
-    default:
-      return "bg-slate-300";
+    case "pass": return "bg-emerald-500";
+    case "warning": return "bg-amber-500";
+    case "error": return "bg-red-500";
+    default: return "bg-slate-300";
+  }
+}
+
+function severityChip(severity: FindingSeverity) {
+  switch (severity) {
+    case "pass": return "bg-emerald-50 text-emerald-700 ring-emerald-200";
+    case "warning": return "bg-amber-50 text-amber-700 ring-amber-200";
+    case "error": return "bg-red-50 text-red-700 ring-red-200";
+    default: return "bg-slate-50 text-slate-600 ring-slate-200";
+  }
+}
+
+function severityLabel(severity: FindingSeverity) {
+  switch (severity) {
+    case "pass": return "Pass";
+    case "warning": return "Warning";
+    case "error": return "Error";
+    default: return "Info";
   }
 }
 
@@ -56,23 +67,63 @@ function scorePill(score: number, max: number) {
   return "bg-red-50 text-red-700 ring-red-200";
 }
 
+/**
+ * Filter findings by the active chip.
+ *
+ *   all      → every finding (passes included)
+ *   pass     → passes only
+ *   error    → errors only
+ *   warning  → warnings only
+ *
+ * The four sets partition the full findings list, so the chip row counts
+ * add up.
+ */
+function filterFindings(
+  findings: AnalysisFinding[],
+  filter: SeverityFilter
+): AnalysisFinding[] {
+  if (filter === "all") return findings;
+  if (filter === "pass") return findings.filter((f) => f.severity === "pass");
+  if (filter === "error") return findings.filter((f) => f.severity === "error");
+  if (filter === "warning") return findings.filter((f) => f.severity === "warning");
+  return findings;
+}
+
 export default function CategoryCard({
   category,
   forceExpanded,
-  dismissedIds,
-  onDismiss,
+  severityFilter,
 }: Props) {
-  const visibleFindings = category.findings.filter((f) => !dismissedIds.has(f.id));
-  const actionable = visibleFindings.filter((f) => f.severity !== "pass");
-  const passed = visibleFindings.filter((f) => f.severity === "pass");
-  const isAllPass = actionable.length === 0 && category.status === "evaluated";
+  // Findings that match the active chip for THIS category
+  const filtered = filterFindings(category.findings, severityFilter);
+
   const isInsufficient = category.status === "insufficient-content";
+  const isAllPass =
+    category.status === "evaluated" &&
+    category.findings.every((f) => f.severity === "pass");
+
+  // Header count comes from the filtered set, so it always matches the
+  // number of findings the body will render for this category.
+  const headerActionableCount = filtered.filter(
+    (f) => f.severity !== "pass"
+  ).length;
+
+  // Whether the current chip has any matching finding in this category
+  const noMatches = filtered.length === 0;
+
   const [expanded, setExpanded] = useState(!isAllPass);
 
   useEffect(() => {
     if (forceExpanded) setExpanded(true);
   }, [forceExpanded]);
 
+  useEffect(() => {
+    if (severityFilter !== "all") setExpanded(true);
+  }, [severityFilter]);
+
+  // Body order: actionable findings first, then passes
+  const actionable = filtered.filter((f) => f.severity !== "pass");
+  const passed = filtered.filter((f) => f.severity === "pass");
   const ordered = [...actionable, ...passed];
 
   return (
@@ -94,7 +145,11 @@ export default function CategoryCard({
         <div className="flex min-w-0 items-center gap-2">
           <span
             className={`h-1.5 w-1.5 shrink-0 rounded-full ${
-              isInsufficient ? "bg-slate-300" : isAllPass ? "bg-emerald-500" : "bg-amber-500"
+              isInsufficient
+                ? "bg-slate-300"
+                : isAllPass
+                ? "bg-emerald-500"
+                : "bg-amber-500"
             }`}
           />
           <span className="truncate text-[11px] font-semibold uppercase tracking-[0.06em] text-slate-700">
@@ -103,13 +158,22 @@ export default function CategoryCard({
         </div>
         <div className="flex shrink-0 items-center gap-2">
           {isInsufficient ? (
-            <span className="text-[9.5px] font-medium text-slate-500">not scoreable</span>
+            <span className="text-[9.5px] font-medium text-slate-500">
+              not scoreable
+            </span>
           ) : (
             <>
-              {!isAllPass && (
-                <span className="text-[9.5px] font-medium text-amber-600">
-                  {actionable.length} to fix
+              {noMatches ? (
+                <span className="text-[9.5px] font-medium text-slate-400">
+                  no matches
                 </span>
+              ) : (
+                !isAllPass &&
+                headerActionableCount > 0 && (
+                  <span className="text-[9.5px] font-medium text-amber-600">
+                    {headerActionableCount} to fix
+                  </span>
+                )
               )}
               <span
                 className={`rounded-full px-2 py-0.5 text-[9.5px] font-bold ring-1 ring-inset ${scorePill(
@@ -134,118 +198,122 @@ export default function CategoryCard({
             </div>
           )}
 
-          {ordered.map((finding) => (
-            <div key={finding.id} className="group px-3 py-2.5">
-              <div className="flex items-start gap-2">
-                <span
-                  className={`mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full ${severityDot(
-                    finding.severity
-                  )}`}
-                />
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0 flex-1 text-[11px] font-semibold leading-snug text-slate-900">
-                      {finding.title}
-                    </div>
-                    <div className="flex shrink-0 items-center gap-1">
-                      {finding.level && finding.level !== "unknown" && (
-                        <span
-                          className={`rounded px-1 py-0.5 text-[8.5px] font-medium uppercase tracking-wide ${LEVEL_COLOR[finding.level]}`}
-                        >
-                          {LEVEL_LABEL[finding.level]}
-                        </span>
-                      )}
-                      {finding.severity !== "pass" && (
-                        <button
-                          type="button"
-                          onClick={() => onDismiss(finding.id)}
-                          className="rounded p-0.5 text-slate-300 opacity-0 transition-opacity hover:bg-slate-100 hover:text-slate-500 group-hover:opacity-100"
-                          title="Dismiss for this session"
-                          aria-label="Dismiss finding"
-                        >
-                          <svg
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="2.5"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            className="h-3 w-3"
-                          >
-                            <path d="M18 6 6 18" />
-                            <path d="m6 6 12 12" />
-                          </svg>
-                        </button>
-                      )}
-                    </div>
-                  </div>
-
-                  <p className="mt-0.5 text-[10.5px] leading-relaxed text-slate-600">
-                    {finding.description}
-                  </p>
-
-                  {finding.severity !== "pass" && (
-                    <p className="mt-0.5 text-[10.5px] italic leading-relaxed text-slate-500">
-                      {finding.recommendation}
-                    </p>
-                  )}
-
-                  {finding.samples && finding.samples.length > 0 && (
-                    <ul className="mt-1.5 space-y-0.5">
-                      {finding.samples.map((sample, i) => (
-                        <li
-                          key={i}
-                          className="flex items-start gap-1.5 rounded-md bg-slate-50 px-1.5 py-1 ring-1 ring-inset ring-slate-100"
-                        >
-                          <span className="mt-0.5 text-[8.5px] font-semibold uppercase text-slate-400">
-                            {sample.kind}
-                          </span>
-                          <span className="min-w-0 flex-1 truncate font-mono text-[9.5px] text-slate-600">
-                            {sample.value}
-                          </span>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-
-                  {finding.suggestion && (
-                    <div className="mt-1.5 rounded-md border border-emerald-100 bg-emerald-50/60 p-2">
-                      <div className="text-[9px] font-semibold uppercase tracking-wide text-emerald-700">
-                        Suggest rewrite
-                      </div>
-                      <div className="mt-1 space-y-0.5">
-                        <div className="flex items-start gap-1">
-                          <span className="mt-0.5 text-[9px] font-bold text-red-500">−</span>
-                          <span className="text-[10.5px] text-slate-500 line-through">
-                            {finding.suggestion.from}
-                          </span>
-                        </div>
-                        <div className="flex items-start gap-1">
-                          <span className="mt-0.5 text-[9px] font-bold text-emerald-600">+</span>
-                          <span className="text-[10.5px] font-medium text-slate-800">
-                            {finding.suggestion.to}
-                          </span>
-                        </div>
-                      </div>
-                      {finding.suggestion.rationale && (
-                        <p className="mt-1 text-[9.5px] italic text-emerald-700/80">
-                          {finding.suggestion.rationale}
-                        </p>
-                      )}
-                    </div>
-                  )}
-
-                  {finding.evidence?.value && !finding.samples?.length && (
-                    <span className="mt-1 inline-block max-w-full truncate rounded-md bg-slate-50 px-1.5 py-0.5 font-mono text-[9px] text-slate-500 ring-1 ring-inset ring-slate-100">
-                      {finding.evidence.source}: {finding.evidence.value.slice(0, 80)}
-                    </span>
-                  )}
-                </div>
-              </div>
+          {ordered.length === 0 && (
+            <div className="px-3 py-3 text-[11px] text-slate-500">
+              No findings match the current filter in this category.
             </div>
+          )}
+
+          {ordered.map((finding) => (
+            <FindingRow key={finding.id} finding={finding} />
           ))}
         </div>
       )}
     </section>
+  );
+}
+
+function FindingRow({ finding }: { finding: AnalysisFinding }) {
+  const [showWhy, setShowWhy] = useState(false);
+
+  return (
+    <div className="group px-3 py-2.5">
+      <div className="flex items-start gap-2">
+        <span
+          className={`mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full ${severityDot(
+            finding.severity
+          )}`}
+        />
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="text-[11px] font-semibold leading-snug text-slate-900">
+              {finding.title}
+            </span>
+            <span
+              className={`rounded-full px-1.5 py-0.5 text-[9px] font-semibold ring-1 ring-inset ${severityChip(
+                finding.severity
+              )}`}
+            >
+              {severityLabel(finding.severity)}
+            </span>
+            {finding.level && finding.level !== "unknown" && (
+              <span className="rounded bg-slate-100 px-1 py-0.5 text-[8.5px] font-medium uppercase tracking-wide text-slate-600">
+                {LEVEL_LABEL[finding.level]}
+              </span>
+            )}
+          </div>
+
+          <p className="mt-1 text-[10.5px] leading-relaxed text-slate-600">
+            {finding.description}
+          </p>
+
+          {finding.severity !== "pass" && (
+            <p className="mt-1 text-[10.5px] italic leading-relaxed text-slate-500">
+              {finding.recommendation}
+            </p>
+          )}
+
+          {finding.severity !== "pass" && (
+            <div className="mt-1.5">
+              <button
+                type="button"
+                onClick={() => setShowWhy((v) => !v)}
+                className="text-[10px] font-medium text-slate-400 transition-colors hover:text-slate-700"
+              >
+                {showWhy ? "Hide why this matters" : "Why this matters"}
+              </button>
+              {showWhy && (
+                <p className="mt-1 rounded-md bg-slate-50 px-2 py-1.5 text-[10.5px] leading-relaxed text-slate-600 ring-1 ring-inset ring-slate-100">
+                  AI answer engines extract short passages and cite them as
+                  answers. A finding like this means the page is harder to
+                  extract cleanly, which reduces the chance that it will be
+                  selected as a source.
+                </p>
+              )}
+            </div>
+          )}
+
+          {finding.samples && finding.samples.length > 0 && (
+            <ul className="mt-1.5 space-y-0.5">
+              {finding.samples.map((sample, i) => (
+                <li
+                  key={i}
+                  className="flex items-start gap-1.5 rounded-md bg-slate-50 px-1.5 py-1 ring-1 ring-inset ring-slate-100"
+                >
+                  <span className="mt-0.5 text-[8.5px] font-semibold uppercase text-slate-400">
+                    {sample.kind}
+                  </span>
+                  <span className="min-w-0 flex-1 truncate font-mono text-[9.5px] text-slate-600">
+                    {sample.value}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+
+          {finding.suggestion && (
+            <div className="mt-1.5 rounded-md border border-emerald-100 bg-emerald-50/60 p-2">
+              <div className="text-[9px] font-semibold uppercase tracking-wide text-emerald-700">
+                Suggest rewrite
+              </div>
+              <div className="mt-1 space-y-0.5">
+                <div className="flex items-start gap-1">
+                  <span className="mt-0.5 text-[9px] font-bold text-red-500">−</span>
+                  <span className="text-[10.5px] text-slate-500 line-through">
+                    {finding.suggestion.from}
+                  </span>
+                </div>
+                <div className="flex items-start gap-1">
+                  <span className="mt-0.5 text-[9px] font-bold text-emerald-600">+</span>
+                  <span className="text-[10.5px] font-medium text-slate-800">
+                    {finding.suggestion.to}
+                  </span>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
   );
 }

@@ -5,6 +5,7 @@ import type { AnalysisResult, AnalysisFinding } from "@/src/types/analysis";
 interface Props {
   result: AnalysisResult;
   onExpandCategory: (category: string) => void;
+  severityFilter?: "all" | "error" | "warning";
 }
 
 const SEVERITY_RANK: Record<AnalysisFinding["severity"], number> = {
@@ -14,29 +15,42 @@ const SEVERITY_RANK: Record<AnalysisFinding["severity"], number> = {
   pass: 3,
 };
 
-function pickTop(findings: AnalysisFinding[], count: number): AnalysisFinding[] {
-  return [...findings]
-    .filter((f) => f.severity === "error" || f.severity === "warning")
+export default function PriorityCard({
+  result,
+  onExpandCategory,
+  severityFilter = "all",
+}: Props) {
+  const candidates = result.findings.filter((f) => {
+    if (severityFilter === "error") return f.severity === "error";
+    if (severityFilter === "warning") return f.severity === "warning";
+    return f.severity === "error" || f.severity === "warning";
+  });
+
+  const top = [...candidates]
     .sort((a, b) => {
       const s = SEVERITY_RANK[a.severity] - SEVERITY_RANK[b.severity];
       if (s !== 0) return s;
       return b.scoreImpact - a.scoreImpact;
     })
-    .slice(0, count);
-}
+    .slice(0, 3);
 
-export default function PriorityCard({ result, onExpandCategory }: Props) {
-  const top = pickTop(result.findings, 3);
   if (top.length === 0) return null;
+
+  const label =
+    severityFilter === "error"
+      ? "Critical issues"
+      : severityFilter === "warning"
+      ? "Warnings to address"
+      : "Fix these first";
 
   return (
     <section className="rounded-xl border border-slate-200 bg-white p-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
       <div className="flex items-center justify-between gap-2">
         <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-500">
-          Fix these first
+          {label}
         </span>
         <span className="text-[9.5px] font-medium text-slate-400">
-          {top.length} of {result.findings.filter((f) => f.severity === "error" || f.severity === "warning").length}
+          {top.length} of {candidates.length}
         </span>
       </div>
 
@@ -64,6 +78,9 @@ export default function PriorityCard({ result, onExpandCategory }: Props) {
                 <span className="mt-0.5 block text-[10px] leading-snug text-slate-500">
                   {finding.recommendation}
                 </span>
+              </span>
+              <span className="shrink-0 rounded-md bg-slate-100 px-1.5 py-0.5 text-[9px] font-semibold text-slate-600">
+                +{finding.scoreImpact}
               </span>
             </button>
           </li>

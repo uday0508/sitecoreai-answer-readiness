@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMarketplaceClient } from "@/src/utils/hooks/useMarketplaceClient";
 import { extractHtmlSignals } from "@/src/lib/analysis/html";
 import { runRules } from "@/src/lib/analysis/rules";
@@ -37,6 +37,8 @@ export interface PageReport {
 export interface PageScoreEntry {
   score: number | null;
   mode: "scored" | "diagnostic";
+  criticalCount: number;
+  issueCount: number;
 }
 
 const EXCLUDED_PATH_SEGMENTS = [
@@ -76,7 +78,6 @@ function formatGuid(id: string): string {
 function extractAgentPageArray(raw: unknown, depth = 0): RawAgentPage[] {
   if (depth > 6) return [];
   if (!raw) return [];
-
   if (Array.isArray(raw)) {
     const first = raw[0];
     if (!first || typeof first !== "object") return [];
@@ -86,10 +87,8 @@ function extractAgentPageArray(raw: unknown, depth = 0): RawAgentPage[] {
     }
     return [];
   }
-
   if (typeof raw !== "object") return [];
   const obj = raw as Record<string, unknown>;
-
   for (const key of ["pages", "results", "items", "data"]) {
     if (Array.isArray(obj[key])) {
       const found = extractAgentPageArray(obj[key], depth + 1);
@@ -111,26 +110,17 @@ function normalizeAgentPage(raw: RawAgentPage): NormalizedPage | null {
   const path = raw.path ?? "";
   if (!path) return null;
   if (!isNavigationPage(path)) return null;
-
   const trimmed = path.replace(/\/$/, "");
   const segments = trimmed.split("/").filter(Boolean);
   const fallbackName = segments.length > 0 ? segments[segments.length - 1] : "Home";
   const name = (raw.name ?? raw.displayName ?? "").trim() || fallbackName;
-
-  return {
-    itemId: formatGuid(rawId),
-    path,
-    name,
-    depth: 0,
-    children: [],
-  };
+  return { itemId: formatGuid(rawId), path, name, depth: 0, children: [] };
 }
 
 function extractHtml(raw: unknown, depth = 0): string | null {
   if (depth > 6) return null;
   if (typeof raw === "string" && raw.length > 0) return raw;
   if (!raw || typeof raw !== "object") return null;
-
   const obj = raw as Record<string, unknown>;
   for (const key of ["html", "content", "body"]) {
     if (typeof obj[key] === "string" && (obj[key] as string).length > 0) {
@@ -145,6 +135,8 @@ function extractHtml(raw: unknown, depth = 0): string | null {
   }
   return null;
 }
+
+type View = "tree" | "priority";
 
 export default function SiteAnalysisView() {
   const { client, error: clientError, isInitialized } = useMarketplaceClient();
@@ -164,12 +156,12 @@ export default function SiteAnalysisView() {
   const [reportLoading, setReportLoading] = useState(false);
   const [reportError, setReportError] = useState<string | null>(null);
 
-  const [scoreByPageId, setScoreByPageId] = useState<Map<string, PageScoreEntry>>(
-    new Map()
-  );
+  const [scoreByPageId, setScoreByPageId] = useState<Map<string, PageScoreEntry>>(new Map());
+  const [view, setView] = useState<View>("tree");
 
   const [batchRunning, setBatchRunning] = useState(false);
-  const [batchProgress, setBatchProgress] = useState({ done: 0, total: 0 });
+  const [batchProgress, setBatchProgress] = useState({ done: 0, total: 0, current: "" });
+  const batchCancelRef = useRef(false);
 
   const selectedSite = sites.find((s) => s.name === selectedSiteName) ?? null;
   const availableLanguages = resolveLanguages(selectedSite);
@@ -184,20 +176,60 @@ export default function SiteAnalysisView() {
     return out;
   }, [pages]);
 
-  const siteAverage = useMemo(() => {
-    const scored = Array.from(scoreByPageId.values()).filter(
+  const siteStats = useMemo(() => {
+    const analyzed = Array.from(scoreByPageId.values()).filter(
       (s) => s.mode === "scored" && s.score !== null
     );
-    if (scored.length < 3) return null;
-    return Math.round(
-      scored.reduce((sum, s) => sum + (s.score ?? 0), 0) / scored.length
-    );
-  }, [scoreByPageId]);
+    const total = flatPages.length;
+    const analyzedCount = analyzed.length;
+    const unanalyzed = Math.max(0, total - analyzedCount);
 
-  const currentIndex = useMemo(() => {
-    if (!selectedPage) return -1;
-    return flatPages.findIndex((p) => p.path === selectedPage.path);
-  }, [flatPages, selectedPage]);
+    const siteAverage =
+      analyzed.length > 0
+        ? Math.round(
+            analyzed.reduce((sum, s) => sum + (s.score ?? 0), 0) / analyzed.length
+          )
+        : null;
+
+    const criticalPages = analyzed.filter((s) => s.criticalCount > 0).length;
+    const needsImprovement = analyzed.filter((s) => (s.score ?? 0) < 60).length;
+
+    const distribution = {
+      good: analyzed.filter((s) => (s.score ?? 0) >= 80).length,
+      needsWork: analyzed.filter(
+        (s) => (s.score ?? 0) >= 60 && (s.score ?? 0) < 80
+      ).length,
+      significant: analyzed.filter(
+        (s) => (s.score ?? 0) >= 35 && (s.score ?? 0) < 60
+      ).length,
+      notReady: analyzed.filter((s) => (s.score ?? 0) < 35).length,
+    };
+
+    return {
+      total,
+      analyzedCount,
+      unanalyzed,
+      siteAverage,
+      criticalPages,
+      needsImprovement,
+      distribution,
+    };
+  }, [scoreByPageId, flatPages]);
+
+  const priorityPages = useMemo(() => {
+    return flatPages
+      .map((page) => {
+        const entry = scoreByPageId.get(page.itemId);
+        return { page, entry };
+      })
+      .filter(({ entry }) => entry && entry.mode === "scored" && entry.score !== null)
+      .sort((a, b) => {
+        const sa = a.entry?.score ?? 100;
+        const sb = b.entry?.score ?? 100;
+        return sa - sb;
+      })
+      .slice(0, 10);
+  }, [flatPages, scoreByPageId]);
 
   useEffect(() => {
     if (!isInitialized || !client || bootstrapped) return;
@@ -243,26 +275,19 @@ export default function SiteAnalysisView() {
     };
 
     void bootstrap();
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [client, isInitialized]);
 
   useEffect(() => {
     if (!selectedSite) return;
     const langs = resolveLanguages(selectedSite);
-    if (!langs.includes(selectedLanguage)) {
-      setSelectedLanguage(langs[0] ?? "en");
-    }
+    if (!langs.includes(selectedLanguage)) setSelectedLanguage(langs[0] ?? "en");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedSite, selectedLanguage]);
 
   useEffect(() => {
-    if (!client || !sitecoreContextId || !selectedSiteName || !selectedLanguage) {
-      return;
-    }
-
+    if (!client || !sitecoreContextId || !selectedSiteName || !selectedLanguage) return;
     let cancelled = false;
     setPagesLoading(true);
     setPagesError(null);
@@ -279,23 +304,18 @@ export default function SiteAnalysisView() {
             query: { sitecoreContextId, language: selectedLanguage },
           },
         });
-
         if (cancelled) return;
-
         const rawPages = extractAgentPageArray(res);
         const normalized = rawPages
           .map((p) => normalizeAgentPage(p))
           .filter((p): p is NormalizedPage => p !== null);
-
         if (normalized.length === 0) {
           setPagesError(
             `No navigation pages found for "${selectedSiteName}" in "${selectedLanguage}".`
           );
           return;
         }
-
-        const tree = buildPageTree(normalized);
-        setPages(tree);
+        setPages(buildPageTree(normalized));
       } catch (e) {
         if (!cancelled) {
           setPagesError(e instanceof Error ? e.message : "Failed to load pages.");
@@ -306,16 +326,13 @@ export default function SiteAnalysisView() {
     };
 
     void load();
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [client, sitecoreContextId, selectedSiteName, selectedLanguage]);
 
   const analyzePage = useCallback(
     async (page: NormalizedPage) => {
       if (!client || !sitecoreContextId) return;
-
       setSelectedPage(page);
       setReportLoading(true);
       setReport(null);
@@ -328,22 +345,30 @@ export default function SiteAnalysisView() {
             query: { sitecoreContextId, language: selectedLanguage },
           },
         });
-
         const html = extractHtml(htmlRes);
         if (!html) {
           setReportError("The page did not return rendered HTML.");
           return;
         }
-
         const signals = extractHtmlSignals(html);
         const rules = runRules(signals);
         const result = calculateResult(rules, signals, page.itemId, selectedLanguage);
 
         setReport({ page, result, language: selectedLanguage });
 
+        const criticalCount = result.findings.filter((f) => f.severity === "error").length;
+        const issueCount = result.findings.filter(
+          (f) => f.severity === "error" || f.severity === "warning"
+        ).length;
+
         setScoreByPageId((prev) => {
           const next = new Map(prev);
-          next.set(page.itemId, { score: result.score, mode: result.mode });
+          next.set(page.itemId, {
+            score: result.score,
+            mode: result.mode,
+            criticalCount,
+            issueCount,
+          });
           return next;
         });
       } catch (e) {
@@ -355,27 +380,28 @@ export default function SiteAnalysisView() {
     [client, sitecoreContextId, selectedLanguage]
   );
 
-  const goPrev = useCallback(() => {
-    if (currentIndex > 0) analyzePage(flatPages[currentIndex - 1]);
-  }, [currentIndex, flatPages, analyzePage]);
-
-  const goNext = useCallback(() => {
-    if (currentIndex >= 0 && currentIndex < flatPages.length - 1) {
-      analyzePage(flatPages[currentIndex + 1]);
-    }
-  }, [currentIndex, flatPages, analyzePage]);
-
   const runBatchAnalysis = useCallback(async () => {
     if (!client || !sitecoreContextId || batchRunning) return;
+    batchCancelRef.current = false;
     setBatchRunning(true);
-    setBatchProgress({ done: 0, total: flatPages.length });
+    setBatchProgress({ done: 0, total: flatPages.length, current: "" });
 
     for (let i = 0; i < flatPages.length; i++) {
+      if (batchCancelRef.current) break;
       const page = flatPages[i];
       if (scoreByPageId.has(page.itemId)) {
-        setBatchProgress({ done: i + 1, total: flatPages.length });
+        setBatchProgress({
+          done: i + 1,
+          total: flatPages.length,
+          current: page.name,
+        });
         continue;
       }
+      setBatchProgress({
+        done: i,
+        total: flatPages.length,
+        current: page.name,
+      });
       try {
         const htmlRes = await client.query("xmc.agent.pagesGetPageHtml", {
           params: {
@@ -388,96 +414,84 @@ export default function SiteAnalysisView() {
           const signals = extractHtmlSignals(html);
           const rules = runRules(signals);
           const result = calculateResult(rules, signals, page.itemId, selectedLanguage);
+          const criticalCount = result.findings.filter((f) => f.severity === "error").length;
+          const issueCount = result.findings.filter(
+            (f) => f.severity === "error" || f.severity === "warning"
+          ).length;
           setScoreByPageId((prev) => {
             const next = new Map(prev);
-            next.set(page.itemId, { score: result.score, mode: result.mode });
+            next.set(page.itemId, {
+              score: result.score,
+              mode: result.mode,
+              criticalCount,
+              issueCount,
+            });
             return next;
           });
         }
       } catch {
-        // Continue with the next page on failure.
+        // Continue on failure.
       }
-      setBatchProgress({ done: i + 1, total: flatPages.length });
+      setBatchProgress({
+        done: i + 1,
+        total: flatPages.length,
+        current: page.name,
+      });
     }
 
     setBatchRunning(false);
+    batchCancelRef.current = false;
   }, [client, sitecoreContextId, selectedLanguage, flatPages, scoreByPageId, batchRunning]);
 
-  const exportSiteReport = useCallback(() => {
-    const lines: string[] = [];
-    lines.push("# SitecoreAI Answer Readiness — Site Report");
-    lines.push("");
-    lines.push(`Site: ${selectedSiteName}`);
-    lines.push(`Language: ${selectedLanguage}`);
-    lines.push(`Pages: ${flatPages.length}`);
-    lines.push(
-      `Analyzed: ${Array.from(scoreByPageId.values()).filter((s) => s.score !== null).length}`
-    );
-    if (siteAverage !== null) {
-      lines.push(`Site average: ${siteAverage}/100`);
-    }
-    lines.push(`Generated: ${new Date().toLocaleString()}`);
-    lines.push("");
-    lines.push("## Page scores");
-    lines.push("");
-    for (const page of flatPages) {
-      const entry = scoreByPageId.get(page.itemId);
-      const score = entry?.score ?? null;
-      const label = score === null ? "not analyzed" : `${score}/100`;
-      lines.push(`- ${page.path} — ${label}`);
-    }
-    lines.push("");
+  const cancelBatch = useCallback(() => {
+    batchCancelRef.current = true;
+  }, []);
 
-    return lines.join("\n");
-  }, [selectedSiteName, selectedLanguage, flatPages, scoreByPageId, siteAverage]);
+  const goPrev = useCallback(() => {
+    if (!selectedPage) return;
+    const idx = flatPages.findIndex((p) => p.path === selectedPage.path);
+    if (idx > 0) analyzePage(flatPages[idx - 1]);
+  }, [selectedPage, flatPages, analyzePage]);
 
-  const handleSiteExport = useCallback(() => {
-    const text = exportSiteReport();
-    const blob = new Blob([text], { type: "text/markdown;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `${selectedSiteName}-answer-readiness-site-report.md`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
-  }, [exportSiteReport, selectedSiteName]);
+  const goNext = useCallback(() => {
+    if (!selectedPage) return;
+    const idx = flatPages.findIndex((p) => p.path === selectedPage.path);
+    if (idx >= 0 && idx < flatPages.length - 1) analyzePage(flatPages[idx + 1]);
+  }, [selectedPage, flatPages, analyzePage]);
+
+  const currentIndex = useMemo(() => {
+    if (!selectedPage) return -1;
+    return flatPages.findIndex((p) => p.path === selectedPage.path);
+  }, [flatPages, selectedPage]);
 
   if (clientError) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-slate-50 p-8">
-        <div className="max-w-md rounded-xl border border-red-200 bg-red-50 p-5 text-base text-red-800">
+        <div className="max-w-md rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">
           Marketplace SDK initialization failed: {clientError.message}
         </div>
       </div>
     );
   }
 
-  if (!isInitialized) {
-    return <SiteLoadingState message="Initializing…" />;
-  }
+  if (!isInitialized) return <SiteLoadingState message="Initializing…" />;
 
   return (
     <div className="flex h-screen flex-col bg-slate-50">
+      {/* Top bar: badge + selects on left, actions on right */}
       <header className="border-b border-slate-200 bg-white">
-        <div className="flex w-full flex-wrap items-center justify-between gap-4 px-8 py-4">
-          <div className="flex items-center gap-5">
-            <div>
-              <div className="text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-500">
-                SitecoreAI
-              </div>
-              <h1 className="text-xl font-semibold text-slate-900">
-                Answer Readiness
-              </h1>
-            </div>
+        <div className="flex w-full flex-wrap items-center justify-between gap-3 px-6 py-3">
+          <div className="flex items-center gap-3">
+            <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-medium text-slate-600">
+              AEO / GEO
+            </span>
 
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5">
               <select
                 value={selectedSiteName}
                 onChange={(e) => setSelectedSiteName(e.target.value)}
                 disabled={sites.length === 0 || pagesLoading}
-                className="rounded-md border border-slate-200 bg-white px-3 py-1.5 text-[13px] font-medium text-slate-700 outline-none focus:border-slate-400 disabled:opacity-50"
+                className="rounded-md border border-slate-200 bg-white px-2 py-1 text-[11px] font-medium text-slate-700 outline-none focus:border-slate-400 disabled:opacity-50"
               >
                 {sites.map((s) => (
                   <option key={s.id} value={s.name}>
@@ -490,7 +504,7 @@ export default function SiteAnalysisView() {
                 value={selectedLanguage}
                 onChange={(e) => setSelectedLanguage(e.target.value)}
                 disabled={availableLanguages.length === 0 || pagesLoading}
-                className="rounded-md border border-slate-200 bg-white px-3 py-1.5 text-[13px] font-medium text-slate-700 outline-none focus:border-slate-400 disabled:opacity-50"
+                className="rounded-md border border-slate-200 bg-white px-2 py-1 text-[11px] font-medium text-slate-700 outline-none focus:border-slate-400 disabled:opacity-50"
               >
                 {availableLanguages.map((lang) => (
                   <option key={lang} value={lang}>
@@ -501,35 +515,22 @@ export default function SiteAnalysisView() {
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
-            {pages.length > 0 && (
-              <div className="text-[13px] text-slate-500">
-                {flatPages.length} page{flatPages.length === 1 ? "" : "s"}
-                {siteAverage !== null && (
-                  <>
-                    {" · site avg "}
-                    <span className="font-semibold text-slate-700">{siteAverage}</span>
-                  </>
-                )}
-              </div>
-            )}
-
+          <div className="flex items-center gap-2">
             {flatPages.length > 0 && (
               <button
                 type="button"
                 onClick={runBatchAnalysis}
                 disabled={batchRunning}
-                className="flex items-center gap-2 rounded-md border border-slate-200 bg-white px-3.5 py-1.5 text-[13px] font-medium text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
-                title="Analyze every page so the tree dots and site average are populated"
+                className="flex items-center gap-1.5 rounded-md border border-slate-200 bg-white px-3 py-1.5 text-[11px] font-medium text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {batchRunning ? (
                   <>
-                    <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-slate-300 border-t-slate-700" />
+                    <span className="h-3 w-3 animate-spin rounded-full border-2 border-slate-300 border-t-slate-700" />
                     {batchProgress.done}/{batchProgress.total}
                   </>
                 ) : (
                   <>
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-3.5 w-3.5">
                       <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" />
                       <path d="M21 3v5h-5" />
                       <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" />
@@ -540,56 +541,219 @@ export default function SiteAnalysisView() {
                 )}
               </button>
             )}
-
-            {Array.from(scoreByPageId.values()).some((s) => s.score !== null) && (
-              <button
-                type="button"
-                onClick={handleSiteExport}
-                className="flex items-center gap-2 rounded-md border border-slate-200 bg-white px-3.5 py-1.5 text-[13px] font-medium text-slate-700 transition-colors hover:bg-slate-50"
-                title="Export the site-wide report"
-              >
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4">
-                  <path d="M12 3v12" />
-                  <path d="m7 10 5 5 5-5" />
-                  <path d="M5 21h14" />
-                </svg>
-                Export site
-              </button>
-            )}
           </div>
         </div>
-      </header>
 
-      <div className="flex flex-1 overflow-hidden">
-        <aside className="flex w-80 shrink-0 flex-col overflow-hidden border-r border-slate-200 bg-white">
-          <div className="border-b border-slate-100 px-5 py-3">
-            <div className="text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-500">
-              Pages
+        {batchRunning && (
+          <div className="border-t border-slate-100 bg-slate-50/60 px-6 py-2">
+            <div className="flex items-center gap-3">
+              <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-slate-200">
+                <div
+                  className="h-full rounded-full bg-slate-900 transition-all"
+                  style={{
+                    width: `${
+                      batchProgress.total > 0
+                        ? Math.round((batchProgress.done / batchProgress.total) * 100)
+                        : 0
+                    }%`,
+                  }}
+                />
+              </div>
+              <span className="shrink-0 text-[11px] text-slate-500">
+                {batchProgress.done} of {batchProgress.total}
+                {batchProgress.current && (
+                  <span className="ml-1 text-slate-400">
+                    · {batchProgress.current}
+                  </span>
+                )}
+              </span>
+              <button
+                type="button"
+                onClick={cancelBatch}
+                className="shrink-0 rounded-md border border-slate-200 bg-white px-2 py-0.5 text-[10.5px] font-medium text-slate-600 transition-colors hover:bg-slate-50"
+              >
+                Cancel
+              </button>
             </div>
           </div>
+        )}
+      </header>
 
-          <div className="flex-1 overflow-y-auto px-2 py-2.5">
-            {pagesLoading && (
-              <div className="flex items-center gap-2.5 px-3 py-3 text-[13px] text-slate-500">
-                <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-slate-300 border-t-slate-700" />
-                Loading pages…
-              </div>
-            )}
+      {/* Site overview strip */}
+      {pages.length > 0 && (
+        <section className="border-b border-slate-200 bg-white">
+          <div className="flex w-full flex-wrap items-center gap-x-6 gap-y-3 px-6 py-3">
+            <Metric
+              label="Analyzed"
+              value={`${siteStats.analyzedCount}/${siteStats.total}`}
+              sub={siteStats.unanalyzed > 0 ? `${siteStats.unanalyzed} remaining` : undefined}
+            />
+            <Divider />
+            <Metric
+              label="Site average"
+              value={siteStats.siteAverage !== null ? `${siteStats.siteAverage}/100` : "—"}
+              valueClass={scoreTone(siteStats.siteAverage)}
+            />
+            <Divider />
+            <Metric
+              label="With critical errors"
+              value={String(siteStats.criticalPages)}
+              valueClass={siteStats.criticalPages > 0 ? "text-red-700" : "text-slate-900"}
+            />
+            <Divider />
+            <Metric
+              label="Below 60"
+              value={String(siteStats.needsImprovement)}
+              valueClass={siteStats.needsImprovement > 0 ? "text-amber-700" : "text-slate-900"}
+            />
+            <Divider />
+            <div className="flex items-center gap-1">
+              {(["good", "needsWork", "significant", "notReady"] as const).map((k) => {
+                const count = siteStats.distribution[k];
+                const color =
+                  k === "good"
+                    ? "bg-emerald-500"
+                    : k === "needsWork"
+                    ? "bg-amber-500"
+                    : k === "significant"
+                    ? "bg-orange-500"
+                    : "bg-red-500";
+                return (
+                  <span
+                    key={k}
+                    className={`inline-block h-3 w-3 rounded-sm ${color}`}
+                    title={`${count} pages`}
+                  />
+                );
+              })}
+              <span className="ml-1 text-[11px] text-slate-500">distribution</span>
+            </div>
 
-            {!pagesLoading && pagesError && (
-              <div className="px-3 py-3 text-[13px] text-red-700">{pagesError}</div>
-            )}
-
-            {!pagesLoading && !pagesError && pages.length > 0 && (
-              <SitePageTree
-                root={pages[0]}
-                selectedPath={selectedPage?.path ?? null}
-                scoreByPageId={scoreByPageId}
-                onSelect={analyzePage}
-              />
-            )}
+            <div className="ml-auto flex items-center gap-1 rounded-md bg-slate-100 p-0.5">
+              <button
+                type="button"
+                onClick={() => setView("tree")}
+                className={`rounded px-2.5 py-1 text-[11px] font-semibold transition-colors ${
+                  view === "tree"
+                    ? "bg-white text-slate-900 shadow-sm"
+                    : "text-slate-500 hover:text-slate-700"
+                }`}
+              >
+                Pages
+              </button>
+              <button
+                type="button"
+                onClick={() => setView("priority")}
+                className={`rounded px-2.5 py-1 text-[11px] font-semibold transition-colors ${
+                  view === "priority"
+                    ? "bg-white text-slate-900 shadow-sm"
+                    : "text-slate-500 hover:text-slate-700"
+                }`}
+              >
+                Priority
+              </button>
+            </div>
           </div>
-        </aside>
+        </section>
+      )}
+
+      <div className="flex flex-1 overflow-hidden">
+        {view === "tree" && (
+          <aside className="flex w-72 shrink-0 flex-col overflow-hidden border-r border-slate-200 bg-white">
+            <div className="border-b border-slate-100 px-4 py-2.5">
+              <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-500">
+                Pages
+              </div>
+            </div>
+            <div className="flex-1 overflow-y-auto px-2 py-2">
+              {pagesLoading && (
+                <div className="flex items-center gap-2 px-2 py-3 text-[11.5px] text-slate-500">
+                  <span className="h-3 w-3 animate-spin rounded-full border-2 border-slate-300 border-t-slate-700" />
+                  Loading pages…
+                </div>
+              )}
+              {!pagesLoading && pagesError && (
+                <div className="px-2 py-3 text-[11.5px] text-red-700">{pagesError}</div>
+              )}
+              {!pagesLoading && !pagesError && pages.length > 0 && (
+                <SitePageTree
+                  root={pages[0]}
+                  selectedPath={selectedPage?.path ?? null}
+                  scoreByPageId={scoreByPageId}
+                  onSelect={analyzePage}
+                />
+              )}
+            </div>
+          </aside>
+        )}
+
+        {view === "priority" && (
+          <aside className="flex w-96 shrink-0 flex-col overflow-hidden border-r border-slate-200 bg-white">
+            <div className="border-b border-slate-100 px-4 py-3">
+              <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-500">
+                Priority improvements
+              </div>
+              <div className="mt-0.5 text-[10.5px] text-slate-400">
+                Ranked by score. Analyze pages to populate.
+              </div>
+            </div>
+            <div className="flex-1 overflow-y-auto">
+              {priorityPages.length === 0 && (
+                <div className="px-4 py-4 text-[11.5px] text-slate-500">
+                  No pages analyzed yet. Click a page in the tree or use
+                  Analyze all.
+                </div>
+              )}
+              <ul className="divide-y divide-slate-100">
+                {priorityPages.map(({ page, entry }, index) => (
+                  <li key={page.itemId}>
+                    <button
+                      type="button"
+                      onClick={() => analyzePage(page)}
+                      className={`flex w-full items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-slate-50 ${
+                        selectedPage?.path === page.path ? "bg-slate-50" : ""
+                      }`}
+                    >
+                      <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-slate-100 text-[10.5px] font-bold text-slate-600">
+                        {index + 1}
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-start justify-between gap-2">
+                          <span className="truncate text-[12px] font-semibold text-slate-900">
+                            {page.name}
+                          </span>
+                          <span
+                            className={`shrink-0 text-[12.5px] font-bold ${scoreTone(
+                              entry?.score ?? null
+                            )}`}
+                          >
+                            {entry?.score ?? "—"}
+                          </span>
+                        </div>
+                        <div className="mt-0.5 flex items-center gap-2 text-[10.5px] text-slate-500">
+                          {entry && entry.criticalCount > 0 && (
+                            <span className="font-medium text-red-700">
+                              {entry.criticalCount} critical
+                            </span>
+                          )}
+                          {entry && entry.issueCount > 0 && (
+                            <span>{entry.issueCount} issues</span>
+                          )}
+                          {entry && entry.issueCount === 0 && (
+                            <span className="text-emerald-600">no issues</span>
+                          )}
+                        </div>
+                        <div className="mt-1 truncate text-[10px] text-slate-400">
+                          {page.path}
+                        </div>
+                      </div>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </aside>
+        )}
 
         <main className="flex-1 overflow-y-auto">
           {!selectedPage && !reportLoading && <SiteWelcomePanel />}
@@ -597,7 +761,7 @@ export default function SiteAnalysisView() {
           {reportLoading && <SiteReportSkeleton />}
 
           {!reportLoading && reportError && (
-            <div className="mx-auto w-full max-w-6xl px-10 py-10">
+            <div className="mx-auto w-full max-w-5xl px-8 py-8">
               <SiteErrorState
                 message={reportError}
                 onRetry={() => selectedPage && analyzePage(selectedPage)}
@@ -608,7 +772,7 @@ export default function SiteAnalysisView() {
           {!reportLoading && report && (
             <SiteReportView
               report={report}
-              siteAverage={siteAverage}
+              siteAverage={siteStats.siteAverage}
               flatPages={flatPages}
               currentIndex={currentIndex}
               onPrev={goPrev}
@@ -622,12 +786,48 @@ export default function SiteAnalysisView() {
   );
 }
 
+function Metric({
+  label,
+  value,
+  sub,
+  valueClass = "text-slate-900",
+}: {
+  label: string;
+  value: string;
+  sub?: string;
+  valueClass?: string;
+}) {
+  return (
+    <div className="flex flex-col">
+      <span className="text-[10px] font-semibold uppercase tracking-[0.06em] text-slate-500">
+        {label}
+      </span>
+      <div className="mt-0.5 flex items-baseline gap-1.5">
+        <span className={`text-[15px] font-bold leading-none ${valueClass}`}>
+          {value}
+        </span>
+        {sub && <span className="text-[10.5px] text-slate-400">{sub}</span>}
+      </div>
+    </div>
+  );
+}
+
+function Divider() {
+  return <span className="hidden h-6 w-px bg-slate-200 sm:inline-block" />;
+}
+
+function scoreTone(score: number | null) {
+  if (score === null) return "text-slate-400";
+  if (score >= 80) return "text-emerald-600";
+  if (score >= 60) return "text-amber-600";
+  if (score >= 35) return "text-orange-600";
+  return "text-red-600";
+}
+
 function buildPageTree(pages: NormalizedPage[]): NormalizedPage[] {
   if (pages.length === 0) return [];
-
   const sorted = [...pages].sort((a, b) => a.path.localeCompare(b.path));
   const rootPath = sorted[0].path;
-
   const root: NormalizedPage = {
     itemId: sorted[0].itemId,
     path: sorted[0].path,
@@ -635,10 +835,8 @@ function buildPageTree(pages: NormalizedPage[]): NormalizedPage[] {
     depth: 0,
     children: [],
   };
-
   const lookup = new Map<string, NormalizedPage>();
   lookup.set(root.path, root);
-
   for (const page of sorted) {
     if (page.path === rootPath) continue;
     lookup.set(page.path, {
@@ -649,12 +847,10 @@ function buildPageTree(pages: NormalizedPage[]): NormalizedPage[] {
       children: [],
     });
   }
-
   for (const page of sorted) {
     if (page.path === rootPath) continue;
     const node = lookup.get(page.path);
     if (!node) continue;
-
     let parentPath = page.path;
     let parent: NormalizedPage | undefined;
     while (parentPath.includes("/")) {
@@ -665,7 +861,6 @@ function buildPageTree(pages: NormalizedPage[]): NormalizedPage[] {
         break;
       }
     }
-
     if (parent) {
       node.depth = parent.depth + 1;
       parent.children.push(node);
@@ -674,50 +869,33 @@ function buildPageTree(pages: NormalizedPage[]): NormalizedPage[] {
       root.children.push(node);
     }
   }
-
   const sortChildren = (node: NormalizedPage) => {
     node.children.sort((a, b) => a.name.localeCompare(b.name));
     node.children.forEach(sortChildren);
   };
   sortChildren(root);
-
   return [root];
 }
 
 function SiteReportSkeleton() {
   return (
-    <div className="mx-auto w-full max-w-6xl space-y-7 px-10 py-10">
-      <div className="animate-pulse rounded-xl border border-slate-200 bg-white p-7">
-        <div className="h-8 w-52 rounded bg-slate-200" />
-        <div className="mt-3 h-4 w-80 rounded bg-slate-100" />
-        <div className="mt-7 flex gap-5">
-          <div className="h-4 w-40 rounded bg-slate-100" />
-          <div className="h-4 w-32 rounded bg-slate-100" />
-          <div className="h-4 w-52 rounded bg-slate-100" />
+    <div className="mx-auto w-full max-w-5xl space-y-6 px-8 py-8">
+      <div className="animate-pulse rounded-xl border border-slate-200 bg-white p-6">
+        <div className="h-6 w-40 rounded bg-slate-200" />
+        <div className="mt-2 h-3 w-64 rounded bg-slate-100" />
+        <div className="mt-6 flex gap-4">
+          <div className="h-3 w-32 rounded bg-slate-100" />
+          <div className="h-3 w-24 rounded bg-slate-100" />
+          <div className="h-3 w-40 rounded bg-slate-100" />
         </div>
       </div>
       <div className="grid grid-cols-5 gap-4">
         {[0, 1, 2, 3, 4].map((i) => (
-          <div
-            key={i}
-            className="animate-pulse rounded-xl border border-slate-200 bg-white p-5"
-          >
-            <div className="h-3.5 w-24 rounded bg-slate-100" />
-            <div className="mt-4 h-2 w-full rounded bg-slate-100" />
-            <div className="mt-4 h-4 w-full rounded bg-slate-100" />
-            <div className="mt-1.5 h-4 w-2/3 rounded bg-slate-100" />
-          </div>
-        ))}
-      </div>
-      <div className="space-y-4">
-        {[0, 1].map((i) => (
-          <div
-            key={i}
-            className="animate-pulse rounded-xl border border-slate-200 bg-white p-6"
-          >
-            <div className="h-5 w-2/3 rounded bg-slate-200" />
-            <div className="mt-4 h-4 w-full rounded bg-slate-100" />
-            <div className="mt-1.5 h-4 w-4/5 rounded bg-slate-100" />
+          <div key={i} className="animate-pulse rounded-xl border border-slate-200 bg-white p-4">
+            <div className="h-3 w-20 rounded bg-slate-100" />
+            <div className="mt-3 h-1.5 w-full rounded bg-slate-100" />
+            <div className="mt-3 h-3 w-full rounded bg-slate-100" />
+            <div className="mt-1 h-3 w-2/3 rounded bg-slate-100" />
           </div>
         ))}
       </div>
