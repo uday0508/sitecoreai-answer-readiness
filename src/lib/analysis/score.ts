@@ -23,6 +23,7 @@ export function calculateResult(
     findings,
     diagnostics: rules.diagnostics,
     analyzedAt: new Date().toISOString(),
+    primaryEntity: rules.primaryEntity,
     source: {
       pageId,
       language,

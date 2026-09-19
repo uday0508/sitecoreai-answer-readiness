@@ -4,8 +4,20 @@ import type {
   CategoryResult,
   AnalysisCategory,
   CategoryStatus,
+  FindingLevel,
 } from "@/src/types/analysis";
 import type { HtmlSignals } from "./html";
+import {
+  headingSamples,
+  paragraphSamples,
+  jsonLdSamples,
+  titleSample,
+  metaSample,
+} from "./samples";
+import {
+  extractPrimaryEntity,
+  suggestHeadingRewrite,
+} from "./suggestions";
 
 const MIN_PARAGRAPHS_FOR_PASSAGE = 3;
 const MIN_WORDS_FOR_DENSITY = 100;
@@ -32,14 +44,11 @@ function makeFinding(
   return { ...partial, automated: true };
 }
 
-// ─────────────────────────────────────────────────────────
-// ANSWER STRUCTURE
-// ─────────────────────────────────────────────────────────
-function evaluateAnswerStructure(signals: HtmlSignals): {
-  findings: AnalysisFinding[];
-  missing: string[];
-  score: number;
-} {
+// ─── ANSWER STRUCTURE ─────────────────────────────────────
+function evaluateAnswerStructure(
+  signals: HtmlSignals,
+  entity: string | null
+): { findings: AnalysisFinding[]; missing: string[]; score: number } {
   const findings: AnalysisFinding[] = [];
   const missing: string[] = [];
   let score = 35;
@@ -62,6 +71,8 @@ function evaluateAnswerStructure(signals: HtmlSignals): {
         recommendation:
           "Add a single H1 that names the page topic, and use H2 for each major section.",
         scoreImpact: 10,
+        level: "page",
+        samples: headingSamples(signals),
       })
     );
   } else if (h1s.length === 0) {
@@ -76,6 +87,12 @@ function evaluateAnswerStructure(signals: HtmlSignals): {
         description: "Section headings exist but the page has no primary H1.",
         recommendation: "Add one H1 that names the page topic.",
         scoreImpact: 5,
+        level: "page",
+        samples: h2s.slice(0, 3).map((h, i) => ({
+          kind: "heading",
+          value: `H${h.level}: ${h.text}`,
+          position: i + 1,
+        })),
       })
     );
   }
@@ -96,6 +113,14 @@ function evaluateAnswerStructure(signals: HtmlSignals): {
         recommendation:
           "Add a 40–80 word opening paragraph that answers the primary question directly.",
         scoreImpact: 10,
+        level: "page",
+        suggestion: entity
+          ? {
+              from: "(no opening paragraph)",
+              to: `${entity} is ...`,
+              rationale: "Start with a definition to make the page answer-extractable.",
+            }
+          : undefined,
       })
     );
   } else if (firstParaWords < 20) {
@@ -111,7 +136,9 @@ function evaluateAnswerStructure(signals: HtmlSignals): {
         recommendation:
           "Expand the opening to 40–80 words so AI systems can extract a self-contained answer.",
         scoreImpact: 6,
+        level: "page",
         evidence: { source: "first-paragraph", value: signals.firstParagraph.slice(0, 160) },
+        samples: paragraphSamples(signals, 1),
       })
     );
   } else if (firstParaWords > 120) {
@@ -127,7 +154,9 @@ function evaluateAnswerStructure(signals: HtmlSignals): {
         recommendation:
           "Split the opening into a short answer-first sentence (under 60 words) followed by supporting detail.",
         scoreImpact: 4,
+        level: "page",
         evidence: { source: "first-paragraph", value: signals.firstParagraph.slice(0, 160) },
+        samples: paragraphSamples(signals, 1),
       })
     );
   } else {
@@ -140,16 +169,22 @@ function evaluateAnswerStructure(signals: HtmlSignals): {
         description: `The page opens with about ${firstParaWords} words.`,
         recommendation: "Keep the opening answer-focused.",
         scoreImpact: 0,
+        level: "page",
       })
     );
   }
 
   const totalHeadings = signals.headings.length;
-  const questionRatio = totalHeadings > 0 ? signals.questionHeadings / totalHeadings : 0;
+  const questionRatio =
+    totalHeadings > 0 ? signals.questionHeadings / totalHeadings : 0;
 
   if (totalHeadings > 0 && questionRatio < MIN_HEADING_QUESTION_RATIO) {
     const deduction = signals.questionHeadings === 0 ? 8 : 4;
     score -= deduction;
+
+    const nonQuestions = signals.headings.filter((h) => !h.isQuestion);
+    const firstNonQuestion = nonQuestions[0];
+
     missing.push("Question-style headings are missing or too few");
     findings.push(
       makeFinding({
@@ -164,7 +199,12 @@ function evaluateAnswerStructure(signals: HtmlSignals): {
         recommendation:
           "Rewrite key section headings as the questions users ask. AI systems align queries to question headings.",
         scoreImpact: deduction,
+        level: "component",
         evidence: { source: "headings", count: totalHeadings },
+        samples: headingSamples(signals, true),
+        suggestion: firstNonQuestion
+          ? suggestHeadingRewrite(firstNonQuestion.text, entity) ?? undefined
+          : undefined,
       })
     );
   } else if (totalHeadings > 0) {
@@ -177,6 +217,7 @@ function evaluateAnswerStructure(signals: HtmlSignals): {
         description: `${signals.questionHeadings} of ${totalHeadings} headings are phrased as questions.`,
         recommendation: "Keep question headings aligned with real user queries.",
         scoreImpact: 0,
+        level: "component",
       })
     );
   }
@@ -197,6 +238,7 @@ function evaluateAnswerStructure(signals: HtmlSignals): {
         recommendation:
           "Use lists or tables where the content naturally fits a structured format.",
         scoreImpact: 3,
+        level: "component",
       })
     );
   } else if (scannable > 0) {
@@ -209,6 +251,7 @@ function evaluateAnswerStructure(signals: HtmlSignals): {
         description: `Detected ${signals.lists} list(s) and ${signals.tables} table(s).`,
         recommendation: "Continue using lists and tables for structured claims.",
         scoreImpact: 0,
+        level: "component",
       })
     );
   }
@@ -216,9 +259,7 @@ function evaluateAnswerStructure(signals: HtmlSignals): {
   return { findings, missing, score: Math.max(0, score) };
 }
 
-// ─────────────────────────────────────────────────────────
-// PASSAGE INTEGRITY
-// ─────────────────────────────────────────────────────────
+// ─── PASSAGE INTEGRITY ────────────────────────────────────
 function evaluatePassageIntegrity(signals: HtmlSignals): {
   findings: AnalysisFinding[];
   missing: string[];
@@ -230,7 +271,7 @@ function evaluatePassageIntegrity(signals: HtmlSignals): {
 
   if (signals.paragraphs.length < MIN_PARAGRAPHS_FOR_PASSAGE) {
     missing.push(
-      `Only ${signals.paragraphs.length} paragraph(s) of substance detected — need at least ${MIN_PARAGRAPHS_FOR_PASSAGE} to evaluate passage integrity`
+      `Only ${signals.paragraphs.length} paragraph(s) of substance detected — need at least ${MIN_PARAGRAPHS_FOR_PASSAGE}`
     );
     findings.push(
       makeFinding({
@@ -242,6 +283,8 @@ function evaluatePassageIntegrity(signals: HtmlSignals): {
         recommendation:
           "Add more prose content so passages can be evaluated for self-containment.",
         scoreImpact: 25,
+        level: "page",
+        samples: paragraphSamples(signals, 2),
       })
     );
     return { findings, missing, score: 0, status: "insufficient-content" };
@@ -262,6 +305,7 @@ function evaluatePassageIntegrity(signals: HtmlSignals): {
         recommendation:
           "Make each section self-contained. AI systems extract passages in isolation.",
         scoreImpact: 8,
+        level: "component",
         evidence: { source: "rendered-html", count: signals.selfContainedIssues },
       })
     );
@@ -275,6 +319,7 @@ function evaluatePassageIntegrity(signals: HtmlSignals): {
         description: "No backward or forward references detected.",
         recommendation: "Keep each passage self-contained.",
         scoreImpact: 0,
+        level: "component",
       })
     );
   }
@@ -294,6 +339,8 @@ function evaluatePassageIntegrity(signals: HtmlSignals): {
         recommendation:
           "Replace ambiguous pronouns with the actual entity name so passages make sense out of context.",
         scoreImpact: 10,
+        level: "component",
+        samples: paragraphSamples(signals, 3),
       })
     );
   } else if (heavyRatio > 0) {
@@ -308,6 +355,7 @@ function evaluatePassageIntegrity(signals: HtmlSignals): {
         description: `${signals.pronounHeavySections} paragraph(s) show elevated pronoun density.`,
         recommendation: "Review those paragraphs for self-containment.",
         scoreImpact: 4,
+        level: "component",
       })
     );
   } else {
@@ -320,6 +368,7 @@ function evaluatePassageIntegrity(signals: HtmlSignals): {
         description: "Paragraphs do not depend on pronouns for meaning.",
         recommendation: "Maintain explicit entity references.",
         scoreImpact: 0,
+        level: "component",
       })
     );
   }
@@ -327,9 +376,7 @@ function evaluatePassageIntegrity(signals: HtmlSignals): {
   return { findings, missing, score: Math.max(0, score), status: "evaluated" };
 }
 
-// ─────────────────────────────────────────────────────────
-// FACTUAL DENSITY
-// ─────────────────────────────────────────────────────────
+// ─── FACTUAL DENSITY ──────────────────────────────────────
 function evaluateFactualDensity(signals: HtmlSignals): {
   findings: AnalysisFinding[];
   missing: string[];
@@ -341,7 +388,7 @@ function evaluateFactualDensity(signals: HtmlSignals): {
 
   if (signals.wordCount < MIN_WORDS_FOR_DENSITY) {
     missing.push(
-      `Only ${signals.wordCount} words — need at least ${MIN_WORDS_FOR_DENSITY} to evaluate factual density`
+      `Only ${signals.wordCount} words — need at least ${MIN_WORDS_FOR_DENSITY}`
     );
     findings.push(
       makeFinding({
@@ -353,6 +400,7 @@ function evaluateFactualDensity(signals: HtmlSignals): {
         recommendation:
           "Add substantive prose. AI systems need concrete claims to quote.",
         scoreImpact: 20,
+        level: "page",
       })
     );
     return { findings, missing, score: 0, status: "insufficient-content" };
@@ -376,7 +424,9 @@ function evaluateFactualDensity(signals: HtmlSignals): {
         recommendation:
           "Add specific numbers, dates, percentages, or comparisons. AI systems preferentially quote concrete claims.",
         scoreImpact: 12,
+        level: "component",
         evidence: { source: "rendered-html", count: signals.factualMarkers },
+        samples: paragraphSamples(signals, 3),
       })
     );
   } else if (density < 0.5) {
@@ -391,7 +441,9 @@ function evaluateFactualDensity(signals: HtmlSignals): {
         description: `Detected ${signals.factualMarkers} factual marker(s) across ${signals.wordCount} words.`,
         recommendation: "Add more concrete facts so AI systems have quotable material.",
         scoreImpact: 6,
+        level: "component",
         evidence: { source: "rendered-html", count: signals.factualMarkers },
+        samples: paragraphSamples(signals, 2),
       })
     );
   } else {
@@ -404,6 +456,7 @@ function evaluateFactualDensity(signals: HtmlSignals): {
         description: `Detected ${signals.factualMarkers} factual marker(s) across ${signals.wordCount} words.`,
         recommendation: "Continue using specific, verifiable claims.",
         scoreImpact: 0,
+        level: "component",
       })
     );
   }
@@ -411,14 +464,11 @@ function evaluateFactualDensity(signals: HtmlSignals): {
   return { findings, missing, score: Math.max(0, score), status: "evaluated" };
 }
 
-// ─────────────────────────────────────────────────────────
-// ENTITY CLARITY
-// ─────────────────────────────────────────────────────────
-function evaluateEntityClarity(signals: HtmlSignals): {
-  findings: AnalysisFinding[];
-  missing: string[];
-  score: number;
-} {
+// ─── ENTITY CLARITY ───────────────────────────────────────
+function evaluateEntityClarity(
+  signals: HtmlSignals,
+  entity: string | null
+): { findings: AnalysisFinding[]; missing: string[]; score: number } {
   const findings: AnalysisFinding[] = [];
   const missing: string[] = [];
   let score = 10;
@@ -436,6 +486,7 @@ function evaluateEntityClarity(signals: HtmlSignals): {
         recommendation:
           "Provide a title that names the primary entity and mirrors the query.",
         scoreImpact: 3,
+        level: "page",
       })
     );
   } else {
@@ -448,7 +499,9 @@ function evaluateEntityClarity(signals: HtmlSignals): {
         description: "A title element names the page topic.",
         recommendation: "Keep the title specific and query-aligned.",
         scoreImpact: 0,
+        level: "page",
         evidence: { source: "title", value: signals.title },
+        samples: titleSample(signals) ? [titleSample(signals)!] : undefined,
       })
     );
   }
@@ -470,6 +523,14 @@ function evaluateEntityClarity(signals: HtmlSignals): {
         recommendation:
           'Add a concise, self-contained definition near the top (e.g., "X is Y").',
         scoreImpact: 3,
+        level: "page",
+        suggestion: entity
+          ? {
+              from: "(no definition)",
+              to: `${entity} is ...`,
+              rationale: "Definition-first structure is the strongest entity signal.",
+            }
+          : undefined,
       })
     );
   } else {
@@ -482,6 +543,7 @@ function evaluateEntityClarity(signals: HtmlSignals): {
         description: "The opening content contains definition-style language.",
         recommendation: "Keep the definition concise and self-contained.",
         scoreImpact: 0,
+        level: "page",
       })
     );
   }
@@ -502,6 +564,7 @@ function evaluateEntityClarity(signals: HtmlSignals): {
         recommendation:
           "Add author attribution for editorial content. AI systems favor content with clear provenance.",
         scoreImpact: 2,
+        level: "page",
       })
     );
   } else {
@@ -516,6 +579,7 @@ function evaluateEntityClarity(signals: HtmlSignals): {
           : "Author signals present.",
         recommendation: "Keep author signals consistent across meta, schema, and byline.",
         scoreImpact: 0,
+        level: "page",
       })
     );
   }
@@ -532,6 +596,26 @@ function evaluateEntityClarity(signals: HtmlSignals): {
         description: "Canonical, OpenGraph, or JSON-LD URLs point to a localhost address.",
         recommendation: "Replace all localhost references with production HTTPS URLs.",
         scoreImpact: 2,
+        level: "page",
+      })
+    );
+  }
+
+  if (signals.genericAltTexts > 0) {
+    score -= 1;
+    missing.push("Generic image alt text detected");
+    findings.push(
+      makeFinding({
+        id: "ec-generic-alt",
+        category: "entity-clarity",
+        severity: "info",
+        title: "Generic image alt text detected",
+        description: `Found ${signals.genericAltTexts} image(s) with placeholder alt text.`,
+        recommendation:
+          "Replace generic alt text with descriptive, entity-specific descriptions.",
+        scoreImpact: 1,
+        level: "component",
+        evidence: { source: "rendered-html", count: signals.genericAltTexts },
       })
     );
   }
@@ -539,9 +623,7 @@ function evaluateEntityClarity(signals: HtmlSignals): {
   return { findings, missing, score: Math.max(0, score) };
 }
 
-// ─────────────────────────────────────────────────────────
-// FAQ READINESS
-// ─────────────────────────────────────────────────────────
+// ─── FAQ READINESS ────────────────────────────────────────
 function evaluateFaqReadiness(
   signals: HtmlSignals,
   crawlerStatus?: CrawlerStatus
@@ -575,6 +657,7 @@ function evaluateFaqReadiness(
         recommendation:
           "Add a FAQ section with 3–5 questions users are likely to ask, and pair it with FAQPage JSON-LD.",
         scoreImpact: 10,
+        level: "component",
       })
     );
     return { findings, missing, score: 0, status: "insufficient-content" };
@@ -592,6 +675,8 @@ function evaluateFaqReadiness(
         description: "Structured data and visible Q&A content are aligned.",
         recommendation: "Keep schema synchronized with visible content.",
         scoreImpact: 0,
+        level: "component",
+        samples: jsonLdSamples(signals),
       })
     );
   } else if (signals.hasFaqSchema && !hasFaqContent) {
@@ -608,6 +693,8 @@ function evaluateFaqReadiness(
         recommendation:
           "Either add visible FAQ content or remove the schema. Mismatched schema reduces trust.",
         scoreImpact: 6,
+        level: "component",
+        samples: jsonLdSamples(signals),
       })
     );
   } else if (!signals.hasFaqSchema && hasFaqContent) {
@@ -624,6 +711,7 @@ function evaluateFaqReadiness(
         recommendation:
           "Add FAQPage schema. It is the one structured data type consistently correlated with AI citations.",
         scoreImpact: 4,
+        level: "component",
       })
     );
   }
@@ -638,8 +726,9 @@ function evaluateFaqReadiness(
         description:
           "Google-Extended disallow prevents Gemini grounding and training use but does not affect Google Search or AI Overviews.",
         recommendation:
-          "If you want content cited in the Gemini app or Vertex AI, unblock Google-Extended. AI Overviews are unaffected.",
+          "If you want content cited in the Gemini app or Vertex AI, unblock Google-Extended.",
         scoreImpact: 0,
+        level: "page",
       })
     );
   }
@@ -656,6 +745,7 @@ function evaluateFaqReadiness(
         recommendation:
           "Consider adding an llms.txt file to provide AI assistants with a curated content map.",
         scoreImpact: 0,
+        level: "page",
       })
     );
   }
@@ -663,23 +753,24 @@ function evaluateFaqReadiness(
   return { findings, missing, score: Math.max(0, score), status: "evaluated" };
 }
 
-// ─────────────────────────────────────────────────────────
-// PUBLIC API
-// ─────────────────────────────────────────────────────────
+// ─── PUBLIC API ───────────────────────────────────────────
 export interface RulesResult {
   categories: CategoryResult[];
   diagnostics: string[];
   mode: "scored" | "diagnostic";
   score: number | null;
+  primaryEntity: string | null;
 }
 
 export function runRules(
   signals: HtmlSignals,
   crawlerStatus?: CrawlerStatus
 ): RulesResult {
+  const primaryEntity = extractPrimaryEntity(signals);
+
   const categories: CategoryResult[] = [];
 
-  const as = evaluateAnswerStructure(signals);
+  const as = evaluateAnswerStructure(signals, primaryEntity);
   categories.push({
     category: "answer-structure",
     label: "Answer Structure",
@@ -712,7 +803,7 @@ export function runRules(
     missingSignals: fd.missing,
   });
 
-  const ec = evaluateEntityClarity(signals);
+  const ec = evaluateEntityClarity(signals, primaryEntity);
   categories.push({
     category: "entity-clarity",
     label: "Entity Clarity",
@@ -734,7 +825,6 @@ export function runRules(
     missingSignals: fr.missing,
   });
 
-  // Collect all missing signals across categories
   const diagnostics: string[] = [];
   for (const cat of categories) {
     for (const m of cat.missingSignals) {
@@ -742,13 +832,11 @@ export function runRules(
     }
   }
 
-  // Decide mode: scored only if at least 3 of 5 categories are evaluated
   const evaluatedCount = categories.filter((c) => c.status === "evaluated").length;
   const mode: "scored" | "diagnostic" =
     evaluatedCount >= 3 ? "scored" : "diagnostic";
-
   const score =
     mode === "scored" ? categories.reduce((sum, c) => sum + c.score, 0) : null;
 
-  return { categories, diagnostics, mode, score };
+  return { categories, diagnostics, mode, score, primaryEntity };
 }

@@ -7,6 +7,7 @@ interface Props {
   summary: string;
   checklist: string;
   full: string;
+  filename?: string;
 }
 
 type CopyState = "idle" | "copied" | "failed";
@@ -16,6 +17,9 @@ interface MenuPosition {
   left: number;
   openUp: boolean;
 }
+
+const MENU_WIDTH = 200;
+const MENU_HEIGHT = 144;
 
 function fallbackCopy(text: string): boolean {
   try {
@@ -35,42 +39,41 @@ function fallbackCopy(text: string): boolean {
   }
 }
 
-export default function CopyButton({ summary, full, checklist }: Props) {
+function downloadText(text: string, filename: string) {
+  const blob = new Blob([text], { type: "text/markdown;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+export default function CopyButton({ summary, checklist, full, filename = "answer-readiness.md" }: Props) {
   const [state, setState] = useState<CopyState>("idle");
   const [open, setOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
   const [position, setPosition] = useState<MenuPosition>({ top: 0, left: 0, openUp: false });
-
   const triggerRef = useRef<HTMLButtonElement | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
 
-  useEffect(() => {
-    setMounted(true);
-  }, []);
+  useEffect(() => setMounted(true), []);
 
-  // Compute position when opening, and on resize/scroll while open
   useLayoutEffect(() => {
     if (!open || !triggerRef.current) return;
-
     const compute = () => {
       const rect = triggerRef.current!.getBoundingClientRect();
-      const menuHeight = 96;
-      const menuWidth = 180;
-      const viewportHeight = window.innerHeight;
-      const viewportWidth = window.innerWidth;
-
-      const spaceBelow = viewportHeight - rect.bottom;
-      const openUp = spaceBelow < menuHeight + 12;
-
-      const top = openUp ? rect.top - menuHeight - 6 : rect.bottom + 6;
+      const spaceBelow = window.innerHeight - rect.bottom;
+      const openUp = spaceBelow < MENU_HEIGHT + 12;
+      const top = openUp ? rect.top - MENU_HEIGHT - 6 : rect.bottom + 6;
       const left = Math.min(
-        Math.max(8, rect.right - menuWidth),
-        viewportWidth - menuWidth - 8
+        Math.max(8, rect.right - MENU_WIDTH),
+        window.innerWidth - MENU_WIDTH - 8
       );
-
       setPosition({ top, left, openUp });
     };
-
     compute();
     window.addEventListener("resize", compute);
     window.addEventListener("scroll", compute, true);
@@ -80,25 +83,16 @@ export default function CopyButton({ summary, full, checklist }: Props) {
     };
   }, [open]);
 
-  // Close on outside click or Escape
   useEffect(() => {
     if (!open) return;
-
     const handleClick = (e: MouseEvent) => {
       const target = e.target as Node;
-      if (
-        triggerRef.current?.contains(target) ||
-        menuRef.current?.contains(target)
-      ) {
-        return;
-      }
+      if (triggerRef.current?.contains(target) || menuRef.current?.contains(target)) return;
       setOpen(false);
     };
-
     const handleKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") setOpen(false);
     };
-
     document.addEventListener("mousedown", handleClick);
     document.addEventListener("keydown", handleKey);
     return () => {
@@ -124,6 +118,11 @@ export default function CopyButton({ summary, full, checklist }: Props) {
     setTimeout(() => setState("idle"), 2500);
   }, []);
 
+  const handleDownload = useCallback(() => {
+    downloadText(full, filename);
+    setOpen(false);
+  }, [full, filename]);
+
   return (
     <div className="flex shrink-0 items-center gap-2">
       {state === "copied" && (
@@ -145,7 +144,7 @@ export default function CopyButton({ summary, full, checklist }: Props) {
         aria-haspopup="menu"
         className="flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[10px] font-medium text-slate-600 transition-colors hover:bg-slate-50"
       >
-        Copy report
+        Export
         <svg
           viewBox="0 0 24 24"
           fill="none"
@@ -168,7 +167,7 @@ export default function CopyButton({ summary, full, checklist }: Props) {
               position: "fixed",
               top: position.top,
               left: position.left,
-              width: 180,
+              width: MENU_WIDTH,
               zIndex: 9999,
             }}
             className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-lg"
@@ -187,6 +186,17 @@ export default function CopyButton({ summary, full, checklist }: Props) {
             <button
               type="button"
               role="menuitem"
+              onClick={() => void doCopy(checklist)}
+              className="block w-full border-t border-slate-100 px-3 py-2 text-left text-[10.5px] font-medium text-slate-700 transition-colors hover:bg-slate-50"
+            >
+              Copy checklist
+              <span className="mt-0.5 block text-[9.5px] font-normal text-slate-400">
+                Markdown task list
+              </span>
+            </button>
+            <button
+              type="button"
+              role="menuitem"
               onClick={() => void doCopy(full)}
               className="block w-full border-t border-slate-100 px-3 py-2 text-left text-[10.5px] font-medium text-slate-700 transition-colors hover:bg-slate-50"
             >
@@ -198,12 +208,12 @@ export default function CopyButton({ summary, full, checklist }: Props) {
             <button
               type="button"
               role="menuitem"
-              onClick={() => void doCopy(checklist)}
+              onClick={handleDownload}
               className="block w-full border-t border-slate-100 px-3 py-2 text-left text-[10.5px] font-medium text-slate-700 transition-colors hover:bg-slate-50"
             >
-              Copy checklist
+              Download .md
               <span className="mt-0.5 block text-[9.5px] font-normal text-slate-400">
-                Markdown task list
+                Save full report to disk
               </span>
             </button>
           </div>,

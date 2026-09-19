@@ -4,11 +4,13 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useMarketplaceClient } from "@/src/utils/hooks/useMarketplaceClient";
 import type {
   AnalysisResult,
+  AnalysisDiff,
   CrawlerStatus,
   PageContext,
   PageInfo,
   SiteInfo,
 } from "@/src/types/analysis";
+import { computeDiff } from "@/src/lib/analysis/diff";
 import ScoreCard from "./ScoreCard";
 import CategoryCard from "./CategoryCard";
 import DiagnosticCard from "./DiagnosticCard";
@@ -16,27 +18,25 @@ import PriorityCard from "./PriorityCard";
 import Banner from "./Banner";
 import CopyButton from "./CopyButton";
 import EmptyState from "./EmptyState";
+import Explainer from "./Explainer";
 
 const SETTLE_MS = 1500;
 const MAX_WAIT_MS = 8000;
 const RETRY_INTERVAL_MS = 500;
 
-function resolveSiteOrigin(
-  siteInfo: SiteInfo | null,
-  pageInfo: PageInfo | null
-): string | null {
+function resolveSiteOrigin(siteInfo: SiteInfo | null, pageInfo: PageInfo | null): string | null {
   if (siteInfo?.targetHostname) {
     const scheme = siteInfo.scheme ?? "https";
     try {
       const url = new URL(`${scheme}://${siteInfo.targetHostname}`);
       if (url.protocol === "http:" || url.protocol === "https:") return url.origin;
-    } catch { /* fall through */ }
+    } catch { /* */ }
   }
   if (pageInfo?.url) {
     try {
       const url = new URL(pageInfo.url);
       if (url.protocol === "http:" || url.protocol === "https:") return url.origin;
-    } catch { /* fall through */ }
+    } catch { /* */ }
   }
   return null;
 }
@@ -49,12 +49,10 @@ function buildSummaryReport(result: AnalysisResult, page: PageInfo | null): stri
   } else {
     lines.push("Status: Not enough content to score");
   }
-
   const top = result.findings
     .filter((f) => f.severity === "error" || f.severity === "warning")
     .sort((a, b) => b.scoreImpact - a.scoreImpact)
     .slice(0, 5);
-
   if (top.length > 0) {
     lines.push("");
     lines.push("Top fixes:");
@@ -62,6 +60,28 @@ function buildSummaryReport(result: AnalysisResult, page: PageInfo | null): stri
       lines.push(`${i + 1}. ${f.title}`);
       lines.push(`   ${f.recommendation}`);
     });
+  }
+  return lines.join("\n");
+}
+
+function buildChecklist(result: AnalysisResult): string {
+  const lines: string[] = [];
+  lines.push("# Answer Readiness Fixes");
+  lines.push("");
+  for (const cat of result.categories) {
+    const actionable = cat.findings.filter(
+      (f) => f.severity === "error" || f.severity === "warning"
+    );
+    if (actionable.length === 0) continue;
+    lines.push(`## ${cat.label}`);
+    for (const f of actionable) {
+      lines.push(`- [ ] ${f.title}`);
+      lines.push(`      ${f.recommendation}`);
+      if (f.suggestion) {
+        lines.push(`      Replace: "${f.suggestion.from}" → "${f.suggestion.to}"`);
+      }
+    }
+    lines.push("");
   }
   return lines.join("\n");
 }
@@ -95,33 +115,19 @@ function buildFullReport(result: AnalysisResult, page: PageInfo | null): string 
       lines.push(`  [${f.severity.toUpperCase()}] ${f.title}`);
       lines.push(`    ${f.description}`);
       lines.push(`    Fix: ${f.recommendation}`);
+      if (f.suggestion) {
+        lines.push(`    Suggest: "${f.suggestion.from}" → "${f.suggestion.to}"`);
+      }
+      if (f.samples) {
+        for (const s of f.samples) {
+          lines.push(`    Sample (${s.kind}): ${s.value}`);
+        }
+      }
     }
     lines.push("");
   }
 
   lines.push(`Analyzed: ${new Date(result.analyzedAt).toLocaleString()}`);
-  return lines.join("\n");
-}
-
-function buildChecklist(result: AnalysisResult): string {
-  const lines: string[] = [];
-  lines.push("# Answer Readiness Fixes");
-  lines.push("");
-
-  for (const cat of result.categories) {
-    const actionable = cat.findings.filter(
-      (f) => f.severity === "error" || f.severity === "warning"
-    );
-    if (actionable.length === 0) continue;
-
-    lines.push(`## ${cat.label}`);
-    for (const f of actionable) {
-      lines.push(`- [ ] ${f.title}`);
-      lines.push(`      ${f.recommendation}`);
-    }
-    lines.push("");
-  }
-
   return lines.join("\n");
 }
 
@@ -134,18 +140,19 @@ export default function AnswerReadinessPanel() {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [editCount, setEditCount] = useState(0);
-  const [previousScore, setPreviousScore] = useState<number | null>(null);
+  const [diff, setDiff] = useState<AnalysisDiff | null>(null);
   const [expandedCategory, setExpandedCategory] = useState<string | null>(null);
+  const [dismissedIds, setDismissedIds] = useState<Set<string>>(new Set());
 
   const activePageIdRef = useRef<string | null>(null);
   const analyzeAbortRef = useRef<AbortController | null>(null);
   const settleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const previousHtmlRef = useRef<string>("");
   const resultPageIdRef = useRef<string | null>(null);
-  const analyzeRef = useRef<() => Promise<void>>(async () => { });
+  const analyzeRef = useRef<() => Promise<void>>(async () => {});
   const pageRef = useRef<PageInfo | null>(null);
   const siteRef = useRef<SiteInfo | null>(null);
-  const lastScoreByPageRef = useRef<Map<string, number>>(new Map());
+  const lastResultByPageRef = useRef<Map<string, AnalysisResult>>(new Map());
 
   useEffect(() => { pageRef.current = page; }, [page]);
   useEffect(() => { siteRef.current = site; }, [site]);
@@ -216,7 +223,7 @@ export default function AnswerReadinessPanel() {
             const data = (await res.json()) as CrawlerStatus;
             if (data.checked) crawler = data;
           }
-        } catch { /* best-effort */ }
+        } catch { /* */ }
       }
 
       if (controller.signal.aborted || activePageIdRef.current !== analyzedId) return;
@@ -238,15 +245,13 @@ export default function AnswerReadinessPanel() {
 
       if (controller.signal.aborted || activePageIdRef.current !== analyzedId) return;
 
-      const prior = lastScoreByPageRef.current.get(analyzedId) ?? null;
-      setPreviousScore(prior);
-
-      if (next.mode === "scored" && next.score !== null) {
-        lastScoreByPageRef.current.set(analyzedId, next.score);
-      }
+      const previous = lastResultByPageRef.current.get(analyzedId) ?? null;
+      setDiff(computeDiff(previous, next));
+      lastResultByPageRef.current.set(analyzedId, next);
 
       setResult(next);
       setResultPageId(analyzedId);
+      setDismissedIds(new Set());
     } catch (e) {
       if (controller.signal.aborted || activePageIdRef.current !== analyzedId) return;
       setMessage(e instanceof Error ? e.message : "Analysis failed.");
@@ -285,8 +290,9 @@ export default function AnswerReadinessPanel() {
         setMessage(null);
         setLoading(false);
         setEditCount(0);
-        setPreviousScore(null);
+        setDiff(null);
         setExpandedCategory(null);
+        setDismissedIds(new Set());
 
         previousHtmlRef.current = "";
         activePageIdRef.current = nextId;
@@ -363,6 +369,14 @@ export default function AnswerReadinessPanel() {
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
   }, [loading]);
+
+  const handleDismiss = useCallback((findingId: string) => {
+    setDismissedIds((prev) => {
+      const next = new Set(prev);
+      next.add(findingId);
+      return next;
+    });
+  }, []);
 
   if (clientError) {
     return (
@@ -454,9 +468,7 @@ export default function AnswerReadinessPanel() {
         <section className="rounded-xl border border-slate-200 bg-white p-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
           <div className="flex items-center gap-2">
             <span className="h-3 w-3 animate-spin rounded-full border-2 border-slate-300 border-t-slate-700" />
-            <span className="text-[11px] font-medium text-slate-600">
-              Analyzing page…
-            </span>
+            <span className="text-[11px] font-medium text-slate-600">Analyzing page…</span>
           </div>
         </section>
       )}
@@ -475,17 +487,17 @@ export default function AnswerReadinessPanel() {
 
       {resultsAreCurrent && result.mode === "scored" && (
         <>
-          <ScoreCard result={result} previousScore={previousScore} />
+          <ScoreCard result={result} diff={diff} />
 
           {(editCount > 0 ||
             Date.now() - new Date(result.analyzedAt).getTime() > 300000) && (
-              <Banner
-                variant="stale"
-                analyzedAt={result.analyzedAt}
-                edited={editCount > 0}
-                onRetry={() => void analyzeRef.current()}
-              />
-            )}
+            <Banner
+              variant="stale"
+              analyzedAt={result.analyzedAt}
+              edited={editCount > 0}
+              onRetry={() => void analyzeRef.current()}
+            />
+          )}
 
           <PriorityCard
             result={result}
@@ -497,6 +509,8 @@ export default function AnswerReadinessPanel() {
               key={category.category}
               category={category}
               forceExpanded={expandedCategory === category.category}
+              dismissedIds={dismissedIds}
+              onDismiss={handleDismiss}
             />
           ))}
 
@@ -511,6 +525,8 @@ export default function AnswerReadinessPanel() {
               full={buildFullReport(result, page)}
             />
           </div>
+
+          <Explainer />
         </>
       )}
     </div>

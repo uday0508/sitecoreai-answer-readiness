@@ -1,10 +1,11 @@
 "use client";
 
-import type { AnalysisResult } from "@/src/types/analysis";
+import type { AnalysisResult, AnalysisDiff } from "@/src/types/analysis";
 
 interface Props {
   result: AnalysisResult;
   previousScore?: number | null;
+  diff?: AnalysisDiff | null;
 }
 
 function readinessMeta(score: number) {
@@ -25,7 +26,7 @@ const SHORT_LABELS: Record<string, string> = {
   "faq-readiness": "FAQ",
 };
 
-export default function ScoreCard({ result, previousScore }: Props) {
+export default function ScoreCard({ result, previousScore, diff }: Props) {
   const score = result.score ?? 0;
   const { label, tone, stroke } = readinessMeta(score);
   const radius = 26;
@@ -37,9 +38,10 @@ export default function ScoreCard({ result, previousScore }: Props) {
   ).length;
 
   const delta =
-    typeof previousScore === "number" && previousScore !== null
+    diff?.scoreDelta ??
+    (typeof previousScore === "number" && previousScore !== null
       ? score - previousScore
-      : null;
+      : null);
 
   return (
     <section className="rounded-xl border border-slate-200 bg-white p-3.5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
@@ -61,9 +63,7 @@ export default function ScoreCard({ result, previousScore }: Props) {
             />
           </svg>
           <div className="absolute inset-0 flex flex-col items-center justify-center">
-            <span className="text-[16px] font-bold leading-none text-slate-900">
-              {score}
-            </span>
+            <span className="text-[16px] font-bold leading-none text-slate-900">{score}</span>
             <span className="mt-0.5 text-[8.5px] font-medium text-slate-400">/100</span>
           </div>
         </div>
@@ -74,9 +74,7 @@ export default function ScoreCard({ result, previousScore }: Props) {
             {delta !== null && delta !== 0 && (
               <span
                 className={`flex items-center gap-0.5 rounded-md px-1.5 py-0.5 text-[9.5px] font-semibold ${
-                  delta > 0
-                    ? "bg-emerald-50 text-emerald-700"
-                    : "bg-red-50 text-red-700"
+                  delta > 0 ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-700"
                 }`}
               >
                 <svg
@@ -104,23 +102,40 @@ export default function ScoreCard({ result, previousScore }: Props) {
         </div>
       </div>
 
-      {/* Score breakdown — label under its own bar, structural alignment */}
+      {diff && diff.entries.length > 0 && (diff.resolvedCount > 0 || diff.newCount > 0) && (
+        <div className="mt-3 flex items-center gap-3 border-t border-slate-100 pt-2.5">
+          {diff.resolvedCount > 0 && (
+            <span className="flex items-center gap-1 text-[10px] font-medium text-emerald-700">
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+              {diff.resolvedCount} resolved
+            </span>
+          )}
+          {diff.newCount > 0 && (
+            <span className="flex items-center gap-1 text-[10px] font-medium text-amber-700">
+              <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
+              {diff.newCount} new
+            </span>
+          )}
+          {diff.unchangedCount > 0 && (
+            <span className="flex items-center gap-1 text-[10px] font-medium text-slate-500">
+              <span className="h-1.5 w-1.5 rounded-full bg-slate-300" />
+              {diff.unchangedCount} unchanged
+            </span>
+          )}
+        </div>
+      )}
+
       <div className="mt-3.5 grid grid-cols-5 gap-1.5">
         {result.categories.map((cat) => {
           const ratio = cat.maxScore > 0 ? cat.score / cat.maxScore : 0;
           const barColor =
-            ratio === 1
-              ? "bg-emerald-500"
-              : ratio >= 0.6
-              ? "bg-amber-500"
-              : "bg-red-500";
+            ratio === 1 ? "bg-emerald-500" : ratio >= 0.6 ? "bg-amber-500" : "bg-red-500";
           const labelColor =
             ratio === 1
               ? "text-emerald-700"
               : ratio >= 0.6
               ? "text-amber-700"
               : "text-red-700";
-
           return (
             <div
               key={cat.category}

@@ -9,10 +9,24 @@ export type AnalysisCategory =
 
 export type CategoryStatus = "evaluated" | "insufficient-content";
 
+export type FindingLevel = "page" | "layout" | "component" | "unknown";
+
+export interface FindingSample {
+  kind: "heading" | "paragraph" | "schema" | "title" | "meta" | "link";
+  value: string;
+  position?: number;
+}
+
 export interface FindingEvidence {
   source: string;
   value?: string;
   count?: number;
+}
+
+export interface RewriteSuggestion {
+  from: string;
+  to: string;
+  rationale?: string;
 }
 
 export interface AnalysisFinding {
@@ -24,6 +38,9 @@ export interface AnalysisFinding {
   recommendation: string;
   scoreImpact: number;
   evidence?: FindingEvidence;
+  samples?: FindingSample[];
+  suggestion?: RewriteSuggestion;
+  level: FindingLevel;
   automated: boolean;
 }
 
@@ -46,6 +63,7 @@ export interface AnalysisResult {
   findings: AnalysisFinding[];
   diagnostics: string[];
   analyzedAt: string;
+  primaryEntity: string | null;
   source: {
     pageId?: string;
     language?: string;
@@ -54,6 +72,25 @@ export interface AnalysisResult {
     headingCount: number;
     paragraphCount: number;
   };
+}
+
+export interface DiffEntry {
+  findingId: string;
+  category: AnalysisCategory;
+  severity: FindingSeverity;
+  title: string;
+  change: "resolved" | "new" | "unchanged" | "improved" | "worsened";
+  previousSeverity?: FindingSeverity;
+}
+
+export interface AnalysisDiff {
+  previousScore: number | null;
+  currentScore: number | null;
+  scoreDelta: number | null;
+  entries: DiffEntry[];
+  resolvedCount: number;
+  newCount: number;
+  unchangedCount: number;
 }
 
 export interface PageInfo {
