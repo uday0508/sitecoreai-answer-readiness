@@ -67,17 +67,6 @@ function scorePill(score: number, max: number) {
   return "bg-red-50 text-red-700 ring-red-200";
 }
 
-/**
- * Filter findings by the active chip.
- *
- *   all      → every finding (passes included)
- *   pass     → passes only
- *   error    → errors only
- *   warning  → warnings only
- *
- * The four sets partition the full findings list, so the chip row counts
- * add up.
- */
 function filterFindings(
   findings: AnalysisFinding[],
   filter: SeverityFilter
@@ -94,7 +83,6 @@ export default function CategoryCard({
   forceExpanded,
   severityFilter,
 }: Props) {
-  // Findings that match the active chip for THIS category
   const filtered = filterFindings(category.findings, severityFilter);
 
   const isInsufficient = category.status === "insufficient-content";
@@ -102,13 +90,10 @@ export default function CategoryCard({
     category.status === "evaluated" &&
     category.findings.every((f) => f.severity === "pass");
 
-  // Header count comes from the filtered set, so it always matches the
-  // number of findings the body will render for this category.
   const headerActionableCount = filtered.filter(
     (f) => f.severity !== "pass"
   ).length;
 
-  // Whether the current chip has any matching finding in this category
   const noMatches = filtered.length === 0;
 
   const [expanded, setExpanded] = useState(!isAllPass);
@@ -121,14 +106,12 @@ export default function CategoryCard({
     if (severityFilter !== "all") setExpanded(true);
   }, [severityFilter]);
 
-  // Body order: actionable findings first, then passes
   const actionable = filtered.filter((f) => f.severity !== "pass");
   const passed = filtered.filter((f) => f.severity === "pass");
   const ordered = [...actionable, ...passed];
 
   return (
-    <section
-      className={`overflow-hidden rounded-xl border bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)] ${
+    <section      className={`overflow-hidden rounded-xl border bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)] ${
         isInsufficient
           ? "border-slate-200"
           : isAllPass
@@ -158,9 +141,7 @@ export default function CategoryCard({
         </div>
         <div className="flex shrink-0 items-center gap-2">
           {isInsufficient ? (
-            <span className="text-[9.5px] font-medium text-slate-500">
-              not scoreable
-            </span>
+            <span className="text-[9.5px] font-medium text-slate-500">not scoreable</span>
           ) : (
             <>
               {noMatches ? (
@@ -215,6 +196,30 @@ export default function CategoryCard({
 
 function FindingRow({ finding }: { finding: AnalysisFinding }) {
   const [showWhy, setShowWhy] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = async () => {
+    const text = [
+      finding.title,
+      "",
+      finding.description,
+      "",
+      `Fix: ${finding.recommendation}`,
+      finding.suggestion
+        ? `\nReplace: "${finding.suggestion.from}" → "${finding.suggestion.to}"`
+        : "",
+    ]
+      .filter(Boolean)
+      .join("\n");
+
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // Clipboard may be blocked in the iframe; silently ignore.
+    }
+  };
 
   return (
     <div className="group px-3 py-2.5">
@@ -240,6 +245,27 @@ function FindingRow({ finding }: { finding: AnalysisFinding }) {
               <span className="rounded bg-slate-100 px-1 py-0.5 text-[8.5px] font-medium uppercase tracking-wide text-slate-600">
                 {LEVEL_LABEL[finding.level]}
               </span>
+            )}
+
+            {finding.severity !== "pass" && (
+              <button
+                type="button"
+                onClick={handleCopy}
+                title="Copy fix"
+                aria-label="Copy fix"
+                className="ml-auto rounded p-0.5 text-slate-300 opacity-0 transition-opacity hover:bg-slate-100 hover:text-slate-700 group-hover:opacity-100"
+              >
+                {copied ? (
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="h-3 w-3 text-emerald-600">
+                    <path d="M20 6 9 17l-5-5" />
+                  </svg>
+                ) : (
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-3 w-3">
+                    <rect width="14" height="14" x="8" y="8" rx="2" ry="2" />
+                    <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" />
+                  </svg>
+                )}
+              </button>
             )}
           </div>
 

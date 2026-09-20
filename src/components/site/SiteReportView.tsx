@@ -15,6 +15,7 @@ interface Props {
   onPrev: () => void;
   onNext: () => void;
   onSelectPage: (page: NormalizedPage) => void;
+  onOpenHelp?: () => void;
 }
 
 const CATEGORY_LABELS: Record<AnalysisCategory, string> = {
@@ -81,21 +82,12 @@ export default function SiteReportView({
   onPrev,
   onNext,
   onSelectPage,
+  onOpenHelp,
 }: Props) {
   const { page, result, language } = report;
-  const score = result.score ?? 0;
 
-  const findings = result.findings;
-  const actionable = findings
-    .filter((f) => f.severity === "error" || f.severity === "warning")
-    .sort((a, b) => b.scoreImpact - a.scoreImpact);
-  const passed = findings.filter((f) => f.severity === "pass");
-  const criticalCount = findings.filter((f) => f.severity === "error").length;
-
-  const topAction = actionable[0] ?? null;
   const breadcrumb = useBreadcrumb(page.path, flatPages);
-
-  const delta = siteAverage !== null ? score - siteAverage : null;
+  const isDiagnostic = result.mode === "diagnostic";
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -114,69 +106,114 @@ export default function SiteReportView({
     return () => window.removeEventListener("keydown", handler);
   }, [onPrev, onNext]);
 
+  if (isDiagnostic) {
+    return (
+      <div className="mx-auto w-full max-w-5xl px-10 pb-20">
+        <StickyHeader
+          breadcrumb={breadcrumb}
+          flatPages={flatPages}
+          currentIndex={currentIndex}
+          onPrev={onPrev}
+          onNext={onNext}
+          onSelectPage={onSelectPage}
+          report={report}
+          siteAverage={siteAverage}
+          onOpenHelp={onOpenHelp}
+        />
+
+        <section className="mt-8 rounded-xl border border-amber-200 bg-amber-50/70 p-6 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+          <div className="flex items-start gap-3">
+            <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-amber-500 text-[13px] font-bold text-white">
+              !
+            </span>
+            <div className="min-w-0 flex-1">
+              <h2 className="text-[17px] font-semibold text-amber-900">
+                Not enough content to score
+              </h2>
+              <p className="mt-1.5 text-[14px] leading-relaxed text-amber-800">
+                This page does not contain enough structured content to produce a
+                meaningful answer readiness score. The analyzer found the
+                following gaps.
+              </p>
+            </div>
+          </div>
+
+          <div className="mt-5 rounded-lg border border-amber-200 bg-white p-4">
+            <div className="text-[12px] font-semibold uppercase tracking-[0.06em] text-amber-700">
+              Missing signals · {result.diagnostics.length}
+            </div>
+            <ul className="mt-2.5 space-y-1.5">
+              {result.diagnostics.map((d, i) => (
+                <li key={i} className="flex items-start gap-2">
+                  <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500" />
+                  <span className="text-[14px] leading-relaxed text-slate-700">{d}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          <div className="mt-5 grid grid-cols-3 gap-3 text-center">
+            <div className="rounded-lg bg-white p-3 ring-1 ring-inset ring-amber-100">
+              <div className="text-[20px] font-bold text-slate-900">
+                {result.source.wordCount}
+              </div>
+              <div className="mt-0.5 text-[11px] font-medium uppercase tracking-wider text-slate-500">
+                Words
+              </div>
+            </div>
+            <div className="rounded-lg bg-white p-3 ring-1 ring-inset ring-amber-100">
+              <div className="text-[20px] font-bold text-slate-900">
+                {result.source.headingCount}
+              </div>
+              <div className="mt-0.5 text-[11px] font-medium uppercase tracking-wider text-slate-500">
+                Headings
+              </div>
+            </div>
+            <div className="rounded-lg bg-white p-3 ring-1 ring-inset ring-amber-100">
+              <div className="text-[20px] font-bold text-slate-900">
+                {result.source.paragraphCount}
+              </div>
+              <div className="mt-0.5 text-[11px] font-medium uppercase tracking-wider text-slate-500">
+                Paragraphs
+              </div>
+            </div>
+          </div>
+
+          <p className="mt-5 text-[14px] leading-relaxed text-amber-800">
+            Add page-level content — an H1, an opening paragraph, prose sections,
+            and at least one FAQ or Q&A section — then re-run the analysis to get
+            a scored result.
+          </p>
+        </section>
+      </div>
+    );
+  }
+
+  const score = result.score ?? 0;
+
+  const findings = result.findings;
+  const actionable = findings
+    .filter((f) => f.severity === "error" || f.severity === "warning")
+    .sort((a, b) => b.scoreImpact - a.scoreImpact);
+  const passed = findings.filter((f) => f.severity === "pass");
+  const criticalCount = findings.filter((f) => f.severity === "error").length;
+
+  const topAction = actionable[0] ?? null;
+  const delta = siteAverage !== null ? score - siteAverage : null;
+
   return (
     <div className="mx-auto w-full max-w-6xl px-10 pb-20">
-      <div className="sticky top-0 z-10 -mx-10 border-b border-slate-200 bg-slate-50/95 px-10 py-4 backdrop-blur">
-        <div className="flex items-center justify-between gap-4">
-          <nav className="flex min-w-0 items-center gap-2 text-[14px] text-slate-500">
-            {breadcrumb.map((crumb, i) => (
-              <span key={crumb.path} className="flex min-w-0 items-center gap-2">
-                {i > 0 && <span className="shrink-0 text-slate-300">›</span>}
-                <button
-                  type="button"
-                  onClick={() => {
-                    const target = flatPages.find((p) => p.path === crumb.path);
-                    if (target) onSelectPage(target);
-                  }}
-                  className="truncate transition-colors hover:text-slate-900"
-                >
-                  {crumb.name}
-                </button>
-              </span>
-            ))}
-          </nav>
-
-          <div className="flex shrink-0 items-center gap-2">
-            <CopyButton
-              iconOnly
-              summary={buildSummaryReport(report, siteAverage)}
-              checklist={buildChecklist(report)}
-              full={buildFullReport(report, siteAverage)}
-              filename={safeFilename(page.name, "answer-readiness")}
-            />
-
-            <span className="mx-2 h-5 w-px bg-slate-200" />
-
-            <button
-              type="button"
-              onClick={onPrev}
-              disabled={currentIndex <= 0}
-              className="flex h-9 w-9 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-600 transition-colors hover:bg-slate-50 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-40"
-              title="Previous page ( [ )"
-              aria-label="Previous page"
-            >
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4.5 w-4.5">
-                <path d="m15 18-6-6 6-6" />
-              </svg>
-            </button>
-            <span className="px-3 text-[14px] text-slate-500">
-              {currentIndex + 1} of {flatPages.length}
-            </span>
-            <button
-              type="button"
-              onClick={onNext}
-              disabled={currentIndex >= flatPages.length - 1}
-              className="flex h-9 w-9 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-600 transition-colors hover:bg-slate-50 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-40"
-              title="Next page ( ] )"
-              aria-label="Next page"
-            >
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4.5 w-4.5">
-                <path d="m9 18 6-6-6-6" />
-              </svg>
-            </button>
-          </div>
-        </div>
-      </div>
+      <StickyHeader
+        breadcrumb={breadcrumb}
+        flatPages={flatPages}
+        currentIndex={currentIndex}
+        onPrev={onPrev}
+        onNext={onNext}
+        onSelectPage={onSelectPage}
+        report={report}
+        siteAverage={siteAverage}
+        onOpenHelp={onOpenHelp}
+      />
 
       <section className="mt-8 rounded-xl border border-slate-200 bg-white p-8 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
         <div className="flex items-start justify-between gap-10">
@@ -334,6 +371,112 @@ export default function SiteReportView({
   );
 }
 
+function StickyHeader({
+  breadcrumb,
+  flatPages,
+  currentIndex,
+  onPrev,
+  onNext,
+  onSelectPage,
+  report,
+  siteAverage,
+  onOpenHelp,
+}: {
+  breadcrumb: Array<{ path: string; name: string }>;
+  flatPages: NormalizedPage[];
+  currentIndex: number;
+  onPrev: () => void;
+  onNext: () => void;
+  onSelectPage: (page: NormalizedPage) => void;
+  report: PageReport;
+  siteAverage: number | null;
+  onOpenHelp?: () => void;
+}) {
+  return (
+    <div className="sticky top-0 z-10 -mx-10 border-b border-slate-200 bg-slate-50/95 px-10 py-4 backdrop-blur">
+      <div className="flex items-center justify-between gap-4">
+        <nav className="flex min-w-0 items-center gap-2 text-[14px] text-slate-500">
+          {breadcrumb.map((crumb, i) => (
+            <span key={crumb.path} className="flex min-w-0 items-center gap-2">
+              {i > 0 && <span className="shrink-0 text-slate-300">›</span>}
+              <button
+                type="button"
+                onClick={() => {
+                  const target = flatPages.find((p) => p.path === crumb.path);
+                  if (target) onSelectPage(target);
+                }}
+                className="truncate transition-colors hover:text-slate-900"
+              >
+                {crumb.name}
+              </button>
+            </span>
+          ))}
+        </nav>
+
+        <div className="flex shrink-0 items-center gap-2">
+          {onOpenHelp && (
+            <button
+              type="button"
+              onClick={onOpenHelp}
+              title="How this score is calculated"
+              aria-label="How this score is calculated"
+              className="flex h-8 w-8 items-center justify-center rounded-md border border-slate-200 bg-white text-[12px] font-semibold text-slate-600 transition-colors hover:bg-slate-50 hover:text-slate-900"
+            >
+              ?
+            </button>
+          )}
+
+          <CopyButton
+            iconOnly
+            summary={buildSummaryReport(report, siteAverage)}
+            checklist={buildChecklist(report)}
+            full={buildFullReport(report, siteAverage)}
+            filename={safeFilename(report.page.name, "answer-readiness")}
+          />
+
+          <span className="mx-1.5 h-4 w-px bg-slate-200" />
+
+          <button
+            type="button"
+            onClick={onPrev}
+            disabled={currentIndex <= 0}
+            className="flex h-8 w-8 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-600 transition-colors hover:bg-slate-50 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-40"
+            title="Previous page ( [ )"
+            aria-label="Previous page"
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4">
+              <path d="m15 18-6-6 6-6" />
+            </svg>
+          </button>
+
+          <span className="flex items-center gap-1.5 px-2 text-[12.5px] text-slate-500">
+            {currentIndex + 1} of {flatPages.length}
+            <kbd className="hidden rounded border border-slate-200 bg-white px-1 py-0.5 font-mono text-[10px] text-slate-500 sm:inline-block">
+              [
+            </kbd>
+            <kbd className="hidden rounded border border-slate-200 bg-white px-1 py-0.5 font-mono text-[10px] text-slate-500 sm:inline-block">
+              ]
+            </kbd>
+          </span>
+
+          <button
+            type="button"
+            onClick={onNext}
+            disabled={currentIndex >= flatPages.length - 1}
+            className="flex h-8 w-8 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-600 transition-colors hover:bg-slate-50 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-40"
+            title="Next page ( ] )"
+            aria-label="Next page"
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4">
+              <path d="m9 18 6-6-6-6" />
+            </svg>
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function CategoryTile({
   label,
   help,
@@ -421,9 +564,7 @@ function useBreadcrumb(
     let current = path;
     while (current) {
       const found = map.get(current);
-      if (found) {
-        segments.unshift({ path: found.path, name: found.name });
-      }
+      if (found) segments.unshift({ path: found.path, name: found.name });
       const idx = current.lastIndexOf("/");
       if (idx <= 0) break;
       current = current.substring(0, idx);
@@ -433,8 +574,6 @@ function useBreadcrumb(
 
   return crumbs;
 }
-
-// ─── Export builders ─────────────────────────────────────────────────
 
 function buildFullReport(report: PageReport, siteAverage: number | null): string {
   const { page, result, language } = report;
@@ -451,12 +590,11 @@ function buildFullReport(report: PageReport, siteAverage: number | null): string
     lines.push(`Score: ${result.score}/100`);
     if (siteAverage !== null) {
       const delta = result.score - siteAverage;
-      lines.push(
-        `Site average: ${siteAverage}/100 (${delta > 0 ? "+" : ""}${delta})`
-      );
+      lines.push(`Site average: ${siteAverage}/100 (${delta > 0 ? "+" : ""}${delta})`);
     }
   } else {
     lines.push("Status: Not enough content to score");
+    for (const d of result.diagnostics) lines.push(`  - ${d}`);
   }
   lines.push("");
 
@@ -478,11 +616,6 @@ function buildFullReport(report: PageReport, siteAverage: number | null): string
       if (f.suggestion) {
         lines.push(`    Suggest: "${f.suggestion.from}" → "${f.suggestion.to}"`);
       }
-      if (f.samples) {
-        for (const s of f.samples) {
-          lines.push(`    Sample (${s.kind}): ${s.value}`);
-        }
-      }
     }
     lines.push("");
   }
@@ -490,9 +623,7 @@ function buildFullReport(report: PageReport, siteAverage: number | null): string
   const passed = result.findings.filter((f) => f.severity === "pass");
   if (passed.length > 0) {
     lines.push(`Passed checks (${passed.length}):`);
-    for (const f of passed) {
-      lines.push(`  ✓ ${f.title}`);
-    }
+    for (const f of passed) lines.push(`  ✓ ${f.title}`);
     lines.push("");
   }
 
@@ -503,25 +634,20 @@ function buildFullReport(report: PageReport, siteAverage: number | null): string
 function buildSummaryReport(report: PageReport, siteAverage: number | null): string {
   const { page, result } = report;
   const lines: string[] = [];
-
   lines.push(`Answer Readiness — ${page.name}`);
   if (result.mode === "scored" && result.score !== null) {
     lines.push(`Score: ${result.score}/100`);
     if (siteAverage !== null) {
       const delta = result.score - siteAverage;
-      lines.push(
-        `Site average: ${siteAverage}/100 (${delta > 0 ? "+" : ""}${delta})`
-      );
+      lines.push(`Site average: ${siteAverage}/100 (${delta > 0 ? "+" : ""}${delta})`);
     }
   } else {
     lines.push("Status: Not enough content to score");
   }
-
   const top = result.findings
     .filter((f) => f.severity === "error" || f.severity === "warning")
     .sort((a, b) => b.scoreImpact - a.scoreImpact)
     .slice(0, 5);
-
   if (top.length > 0) {
     lines.push("");
     lines.push("Top fixes:");

@@ -11,6 +11,7 @@ import SiteReportView from "./SiteReportView";
 import SiteWelcomePanel from "./SiteWelcomePanel";
 import SiteLoadingState from "./SiteLoadingState";
 import SiteErrorState from "./SiteErrorState";
+import HelpModal from "@/src/components/HelpModal";
 
 interface RawSite {
   id: string;
@@ -158,6 +159,7 @@ export default function SiteAnalysisView() {
 
   const [scoreByPageId, setScoreByPageId] = useState<Map<string, PageScoreEntry>>(new Map());
   const [view, setView] = useState<View>("tree");
+  const [helpOpen, setHelpOpen] = useState(false);
 
   const [batchRunning, setBatchRunning] = useState(false);
   const [batchProgress, setBatchProgress] = useState({ done: 0, total: 0, current: "" });
@@ -310,9 +312,7 @@ export default function SiteAnalysisView() {
           .map((p) => normalizeAgentPage(p))
           .filter((p): p is NormalizedPage => p !== null);
         if (normalized.length === 0) {
-          setPagesError(
-            `No navigation pages found for "${selectedSiteName}" in "${selectedLanguage}".`
-          );
+          setPages([]);
           return;
         }
         setPages(buildPageTree(normalized));
@@ -478,7 +478,6 @@ export default function SiteAnalysisView() {
 
   return (
     <div className="flex h-screen flex-col bg-slate-50">
-      {/* Top bar: badge + selects on left, actions on right */}
       <header className="border-b border-slate-200 bg-white">
         <div className="flex w-full flex-wrap items-center justify-between gap-3 px-6 py-3">
           <div className="flex items-center gap-3">
@@ -516,6 +515,16 @@ export default function SiteAnalysisView() {
           </div>
 
           <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setHelpOpen(true)}
+              title="How this score is calculated"
+              aria-label="How this score is calculated"
+              className="flex h-7 w-7 items-center justify-center rounded-full border border-slate-200 bg-white text-[11px] font-semibold text-slate-600 transition-colors hover:bg-slate-50 hover:text-slate-900"
+            >
+              ?
+            </button>
+
             {flatPages.length > 0 && (
               <button
                 type="button"
@@ -579,7 +588,6 @@ export default function SiteAnalysisView() {
         )}
       </header>
 
-      {/* Site overview strip */}
       {pages.length > 0 && (
         <section className="border-b border-slate-200 bg-white">
           <div className="flex w-full flex-wrap items-center gap-x-6 gap-y-3 px-6 py-3">
@@ -756,7 +764,11 @@ export default function SiteAnalysisView() {
         )}
 
         <main className="flex-1 overflow-y-auto">
-          {!selectedPage && !reportLoading && <SiteWelcomePanel />}
+          {!pagesLoading && !pagesError && pages.length === 0 && (
+            <NoPagesState siteName={selectedSiteName} language={selectedLanguage} />
+          )}
+
+          {pages.length > 0 && !selectedPage && !reportLoading && <SiteWelcomePanel />}
 
           {reportLoading && <SiteReportSkeleton />}
 
@@ -778,10 +790,13 @@ export default function SiteAnalysisView() {
               onPrev={goPrev}
               onNext={goNext}
               onSelectPage={analyzePage}
+              onOpenHelp={() => setHelpOpen(true)}
             />
           )}
         </main>
       </div>
+
+      <HelpModal open={helpOpen} onClose={() => setHelpOpen(false)} result={report?.result ?? null} />
     </div>
   );
 }
@@ -822,6 +837,36 @@ function scoreTone(score: number | null) {
   if (score >= 60) return "text-amber-600";
   if (score >= 35) return "text-orange-600";
   return "text-red-600";
+}
+
+function NoPagesState({ siteName, language }: { siteName: string; language: string }) {
+  return (
+    <div className="flex h-full flex-col items-center justify-center py-24">
+      <div className="flex h-12 w-12 items-center justify-center rounded-full bg-slate-100">
+        <svg
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.75"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          className="h-5 w-5 text-slate-400"
+        >
+          <circle cx="11" cy="11" r="8" />
+          <path d="m21 21-4.35-4.35" />
+        </svg>
+      </div>
+      <h2 className="mt-4 text-[14px] font-semibold text-slate-900">
+        No pages in this site
+      </h2>
+      <p className="mt-1 max-w-md text-center text-[12px] leading-relaxed text-slate-500">
+        The site <strong className="text-slate-700">{siteName}</strong> in
+        language <strong className="text-slate-700">{language}</strong> does not
+        expose any navigation pages. Publish pages in this language, or switch
+        to a different site or language.
+      </p>
+    </div>
+  );
 }
 
 function buildPageTree(pages: NormalizedPage[]): NormalizedPage[] {
