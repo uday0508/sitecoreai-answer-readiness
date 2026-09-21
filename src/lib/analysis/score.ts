@@ -22,8 +22,9 @@ export function calculateResult(
     categories: rules.categories,
     findings,
     diagnostics: rules.diagnostics,
-    analyzedAt: new Date().toISOString(),
+    analyzedAt: rules.evaluatedAt,
     primaryEntity: rules.primaryEntity,
+    policy: rules.policy,
     source: {
       pageId,
       language,

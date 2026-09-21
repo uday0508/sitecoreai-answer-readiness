@@ -1,7 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import type { CategoryResult, AnalysisFinding } from "@/src/types/analysis";
+import { useState } from "react";
+import type {
+  CategoryResult,
+  AnalysisFinding,
+  FindingSource,
+} from "@/src/types/analysis";
 
 interface Props {
   category: CategoryResult;
@@ -21,7 +25,11 @@ const CATEGORY_HELP: Record<string, string> = {
   "entity-clarity":
     "Clear entity definition and authorship help AI attribute claims.",
   "faq-readiness":
-    "FAQPage schema mirrors Q&A extraction, the strongest citation signal.",
+    "FAQPage schema mirrors Q&A extraction, the strongest citation signal. Pages with no FAQ content and no FAQPage schema score 0 in this category.",
+  freshness:
+    "Recency matters. A machine-readable last-modified date helps AI trust the page as current. Pages with no freshness signal score 0 in this category.",
+  citation:
+    "Citing external sources and attributing claims makes the page more quotable by AI.",
 };
 
 const LEVEL_LABEL: Record<string, string> = {
@@ -31,12 +39,50 @@ const LEVEL_LABEL: Record<string, string> = {
   unknown: "",
 };
 
+const SOURCE_LABEL: Record<FindingSource, string> = {
+  "open-graph": "OGP",
+  "schema-org": "schema.org",
+  "html-standard": "HTML",
+  "robots-exclusion": "robots.txt",
+  "llms-txt": "llms.txt",
+  heuristic: "heuristic",
+};
+
+const SOURCE_TOOLTIP: Record<FindingSource, string> = {
+  "open-graph":
+    "Detected by parsing Open Graph Protocol metadata (ogp.me).",
+  "schema-org":
+    "Detected by parsing schema.org JSON-LD or Microdata.",
+  "html-standard":
+    "Detected by parsing standard HTML elements (HTML Living Standard, WHATWG).",
+  "robots-exclusion":
+    "Detected by parsing robots.txt against Google's published crawler documentation.",
+  "llms-txt":
+    "Detected against the llms.txt convention (llmstxt.org). Emerging, not a formal standard.",
+  heuristic:
+    "Detected by an editorial heuristic — a pattern or threshold chosen by this app, not a published standard.",
+};
+
+function sourceChipClass(source: FindingSource): string {
+  if (source === "heuristic") {
+    return "bg-slate-100 text-slate-500 ring-slate-200";
+  }
+  if (source === "llms-txt") {
+    return "bg-amber-50 text-amber-700 ring-amber-200";
+  }
+  return "bg-blue-50 text-blue-700 ring-blue-200";
+}
+
 function severityDot(severity: AnalysisFinding["severity"]) {
   switch (severity) {
-    case "pass": return "bg-emerald-500";
-    case "warning": return "bg-amber-500";
-    case "error": return "bg-red-500";
-    default: return "bg-slate-300";
+    case "pass":
+      return "bg-emerald-500";
+    case "warning":
+      return "bg-amber-500";
+    case "error":
+      return "bg-red-500";
+    default:
+      return "bg-slate-300";
   }
 }
 
@@ -92,9 +138,16 @@ export default function CategoryDetail({
               {CATEGORY_HELP[category.category]}
             </p>
           </div>
-          <span className={`shrink-0 text-[18px] font-bold ${scoreTone(category.score, category.maxScore)}`}>
+          <span
+            className={`shrink-0 text-[18px] font-bold ${scoreTone(
+              category.score,
+              category.maxScore
+            )}`}
+          >
             {category.score}
-            <span className="text-[11px] font-medium text-slate-400">/{category.maxScore}</span>
+            <span className="text-[11px] font-medium text-slate-400">
+              /{category.maxScore}
+            </span>
           </span>
         </div>
       </div>
@@ -105,13 +158,27 @@ export default function CategoryDetail({
           className="group rounded-xl border border-slate-200 bg-white p-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)]"
         >
           <div className="flex items-start gap-2">
-            <span className={`mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full ${severityDot(finding.severity)}`} />
+            <span
+              className={`mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full ${severityDot(
+                finding.severity
+              )}`}
+            />
             <div className="min-w-0 flex-1">
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0 flex-1 text-[11.5px] font-semibold leading-snug text-slate-900">
                   {finding.title}
                 </div>
                 <div className="flex shrink-0 items-center gap-1">
+                  {finding.source && (
+                    <span
+                      className={`rounded px-1.5 py-0.5 text-[8.5px] font-medium uppercase tracking-wide ring-1 ring-inset ${sourceChipClass(
+                        finding.source
+                      )}`}
+                      title={SOURCE_TOOLTIP[finding.source]}
+                    >
+                      {SOURCE_LABEL[finding.source]}
+                    </span>
+                  )}
                   {finding.level && finding.level !== "unknown" && (
                     <span className="rounded bg-slate-100 px-1 py-0.5 text-[8.5px] font-medium uppercase tracking-wide text-slate-600">
                       {LEVEL_LABEL[finding.level]}
@@ -125,7 +192,15 @@ export default function CategoryDetail({
                       title="Dismiss for this session"
                       aria-label="Dismiss finding"
                     >
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="h-3 w-3">
+                      <svg
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2.5"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        className="h-3 w-3"
+                      >
                         <path d="M18 6 6 18" />
                         <path d="m6 6 12 12" />
                       </svg>
@@ -174,13 +249,17 @@ export default function CategoryDetail({
                   </div>
                   <div className="mt-1 space-y-0.5">
                     <div className="flex items-start gap-1">
-                      <span className="mt-0.5 text-[9px] font-bold text-red-500">−</span>
+                      <span className="mt-0.5 text-[9px] font-bold text-red-500">
+                        −
+                      </span>
                       <span className="text-[10.5px] text-slate-500 line-through">
                         {finding.suggestion.from}
                       </span>
                     </div>
                     <div className="flex items-start gap-1">
-                      <span className="mt-0.5 text-[9px] font-bold text-emerald-600">+</span>
+                      <span className="mt-0.5 text-[9px] font-bold text-emerald-600">
+                        +
+                      </span>
                       <span className="text-[10.5px] font-medium text-slate-800">
                         {finding.suggestion.to}
                       </span>
@@ -206,7 +285,9 @@ export default function CategoryDetail({
             className="flex w-full items-center justify-between text-[10px] font-medium text-slate-500"
           >
             <span>{dismissed.length} dismissed this session</span>
-            <span className="text-slate-400">{showDismissed ? "Hide" : "Show"}</span>
+            <span className="text-slate-400">
+              {showDismissed ? "Hide" : "Show"}
+            </span>
           </button>
           {showDismissed && (
             <div className="mt-2 space-y-1">
@@ -215,7 +296,9 @@ export default function CategoryDetail({
                   key={finding.id}
                   className="flex items-start justify-between gap-2 text-[10px] text-slate-500"
                 >
-                  <span className="min-w-0 flex-1 truncate">{finding.title}</span>
+                  <span className="min-w-0 flex-1 truncate">
+                    {finding.title}
+                  </span>
                   <button
                     type="button"
                     onClick={() => onRestore(finding.id)}

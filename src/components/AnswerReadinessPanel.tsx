@@ -2,7 +2,11 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useMarketplaceClient } from "@/src/utils/hooks/useMarketplaceClient";
-import type { AnalysisResult, PageContext, PageInfo } from "@/src/types/analysis";
+import type {
+  AnalysisResult,
+  PageContext,
+  PageInfo,
+} from "@/src/types/analysis";
 import ScoreCard from "./ScoreCard";
 import CategoryCard from "./CategoryCard";
 import DiagnosticCard from "./DiagnosticCard";
@@ -17,7 +21,7 @@ interface QueryEnvelope<T> {
   unsubscribe?: () => void;
 }
 
-export type SeverityFilter = "all" | "error" | "warning" | "pass";
+export type SeverityFilter = "all" | "error" | "warning" | "info" | "pass";
 
 const HEADER_SCROLL_OFFSET = 190;
 
@@ -105,9 +109,14 @@ function buildReport(result: AnalysisResult, page: PageInfo | null): string {
   return lines.join("\n");
 }
 
-function buildSummaryReport(result: AnalysisResult, page: PageInfo | null): string {
+function buildSummaryReport(
+  result: AnalysisResult,
+  page: PageInfo | null
+): string {
   const lines: string[] = [];
-  lines.push(`Answer Readiness — ${page?.displayName ?? page?.name ?? "Untitled"}`);
+  lines.push(
+    `Answer Readiness — ${page?.displayName ?? page?.name ?? "Untitled"}`
+  );
   lines.push(
     result.mode === "scored" && result.score !== null
       ? `Score: ${result.score}/100`
@@ -140,7 +149,9 @@ function buildChecklist(result: AnalysisResult): string {
       lines.push(`- [ ] ${f.title}`);
       lines.push(`      ${f.recommendation}`);
       if (f.suggestion) {
-        lines.push(`      Replace: "${f.suggestion.from}" → "${f.suggestion.to}"`);
+        lines.push(
+          `      Replace: "${f.suggestion.from}" → "${f.suggestion.to}"`
+        );
       }
     }
     lines.push("");
@@ -151,7 +162,9 @@ function buildChecklist(result: AnalysisResult): string {
 export default function AnswerReadinessPanel() {
   const { client, error: clientError, isInitialized } = useMarketplaceClient();
   const [page, setPage] = useState<PageInfo | null>(null);
-  const [sitecoreContextId, setSitecoreContextId] = useState<string | null>(null);
+  const [sitecoreContextId, setSitecoreContextId] = useState<string | null>(
+    null
+  );
   const [result, setResult] = useState<AnalysisResult | null>(null);
   const [resultPageId, setResultPageId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -174,9 +187,15 @@ export default function AnswerReadinessPanel() {
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const categoryRefs = useRef<Map<string, HTMLElement>>(new Map());
 
-  useEffect(() => { pageRef.current = page; }, [page]);
-  useEffect(() => { resultPageIdRef.current = resultPageId; }, [resultPageId]);
-  useEffect(() => { sitecoreContextIdRef.current = sitecoreContextId; }, [sitecoreContextId]);
+  useEffect(() => {
+    pageRef.current = page;
+  }, [page]);
+  useEffect(() => {
+    resultPageIdRef.current = resultPageId;
+  }, [resultPageId]);
+  useEffect(() => {
+    sitecoreContextIdRef.current = sitecoreContextId;
+  }, [sitecoreContextId]);
 
   const scrollToCategory = useCallback((categoryKey: string) => {
     const container = scrollContainerRef.current;
@@ -184,7 +203,8 @@ export default function AnswerReadinessPanel() {
     if (!container || !target) return;
     const containerTop = container.getBoundingClientRect().top;
     const targetTop = target.getBoundingClientRect().top;
-    const offset = targetTop - containerTop + container.scrollTop - HEADER_SCROLL_OFFSET;
+    const offset =
+      targetTop - containerTop + container.scrollTop - HEADER_SCROLL_OFFSET;
     container.scrollTo({ top: Math.max(0, offset), behavior: "smooth" });
   }, []);
 
@@ -268,9 +288,11 @@ export default function AnswerReadinessPanel() {
         const appRes = await client.query("application.context");
         if (cancelled) return;
         const appData = (appRes as { data?: unknown }).data ?? appRes;
-        const access = (appData as {
-          resourceAccess?: Array<{ context?: { live?: string } }>;
-        }).resourceAccess;
+        const access = (
+          appData as {
+            resourceAccess?: Array<{ context?: { live?: string } }>;
+          }
+        ).resourceAccess;
         const ctxId = access?.[0]?.context?.live;
         if (ctxId) setSitecoreContextId(ctxId);
 
@@ -299,7 +321,8 @@ export default function AnswerReadinessPanel() {
           },
           onError: (err) => console.error("Fields subscription error:", err),
         });
-        unsubscribeFields = typeof fieldsSub === "function" ? fieldsSub : undefined;
+        unsubscribeFields =
+          typeof fieldsSub === "function" ? fieldsSub : undefined;
       } catch (e) {
         if (!cancelled) {
           setMessage(e instanceof Error ? e.message : "Context load failed.");
@@ -336,7 +359,12 @@ export default function AnswerReadinessPanel() {
     setEditCount(0);
 
     try {
-      const html = await readPageHtml(client, analyzedId, currentPage?.language, ctxId);
+      const html = await readPageHtml(
+        client,
+        analyzedId,
+        currentPage?.language,
+        ctxId
+      );
       if (controller.signal.aborted) return;
       if (activePageIdRef.current !== analyzedId) return;
 
@@ -358,7 +386,8 @@ export default function AnswerReadinessPanel() {
         signal: controller.signal,
       });
 
-      if (!res.ok) throw new Error("The analysis service could not process the page.");
+      if (!res.ok)
+        throw new Error("The analysis service could not process the page.");
       const next = (await res.json()) as AnalysisResult;
 
       if (controller.signal.aborted) return;
@@ -381,14 +410,17 @@ export default function AnswerReadinessPanel() {
     }
   }, [client]);
 
-  useEffect(() => { analyzeRef.current = analyze; }, [analyze]);
+  useEffect(() => {
+    analyzeRef.current = analyze;
+  }, [analyze]);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key !== "r" && e.key !== "R") return;
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       const target = e.target as HTMLElement | null;
-      if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA")) return;
+      if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA"))
+        return;
       if (loading) return;
       e.preventDefault();
       void analyzeRef.current();
@@ -419,9 +451,10 @@ export default function AnswerReadinessPanel() {
         all: result.findings.length,
         errors: result.findings.filter((f) => f.severity === "error").length,
         warnings: result.findings.filter((f) => f.severity === "warning").length,
+        infos: result.findings.filter((f) => f.severity === "info").length,
         passes: result.findings.filter((f) => f.severity === "pass").length,
       }
-    : { all: 0, errors: 0, warnings: 0, passes: 0 };
+    : { all: 0, errors: 0, warnings: 0, infos: 0, passes: 0 };
 
   const priorityFilter: "all" | "error" | "warning" =
     severityFilter === "error"
@@ -438,7 +471,6 @@ export default function AnswerReadinessPanel() {
   return (
     <div className="flex h-full min-h-0 flex-col bg-slate-50">
       <header className="z-20 shrink-0 border-b border-slate-200 bg-white">
-        {/* Top row: badge on the left, actions on the right */}
         <div className="flex items-center justify-between gap-3 px-3.5 pt-3 pb-2">
           <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[10px] font-medium text-slate-600">
             AEO / GEO
@@ -465,7 +497,15 @@ export default function AnswerReadinessPanel() {
               {loading ? (
                 <span className="h-3 w-3 animate-spin rounded-full border-2 border-slate-300 border-t-slate-700" />
               ) : (
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-3.5 w-3.5">
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  className="h-3.5 w-3.5"
+                >
                   <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" />
                   <path d="M21 3v5h-5" />
                   <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" />
@@ -527,7 +567,7 @@ export default function AnswerReadinessPanel() {
         )}
 
         {resultsAreCurrent && result.mode === "scored" && (
-          <div className="flex items-center gap-0.5 border-t border-slate-100 bg-slate-50/60 px-2.5 py-1.5">
+          <div className="grid grid-cols-5 gap-0.5 border-t border-slate-100 bg-slate-50/60 px-2.5 py-1.5">
             {[
               {
                 key: "all" as const,
@@ -548,6 +588,12 @@ export default function AnswerReadinessPanel() {
                 title: "Warning-level findings",
               },
               {
+                key: "info" as const,
+                label: "Info",
+                count: counts.infos,
+                title: "Informational findings",
+              },
+              {
                 key: "pass" as const,
                 label: "Passed",
                 count: counts.passes,
@@ -559,7 +605,7 @@ export default function AnswerReadinessPanel() {
                 type="button"
                 onClick={() => handleSeverityFilterChange(chip.key)}
                 title={chip.title}
-                className={`flex flex-1 items-center justify-center gap-1 rounded-md px-1.5 py-1 text-[9.5px] font-semibold transition-colors ${
+                className={`flex items-center justify-center gap-1 rounded-md px-1 py-1 text-[9px] font-semibold transition-colors ${
                   severityFilter === chip.key
                     ? "bg-white text-slate-900 shadow-sm ring-1 ring-inset ring-slate-200"
                     : "text-slate-500 hover:text-slate-700"
@@ -567,11 +613,13 @@ export default function AnswerReadinessPanel() {
               >
                 <span className="truncate">{chip.label}</span>
                 <span
-                  className={`rounded-full px-1 text-[8.5px] font-bold ${
+                  className={`rounded-full px-1 text-[8px] font-bold ${
                     chip.key === "error"
                       ? "bg-red-100 text-red-700"
                       : chip.key === "warning"
                       ? "bg-amber-100 text-amber-700"
+                      : chip.key === "info"
+                      ? "bg-slate-200 text-slate-700"
                       : chip.key === "pass"
                       ? "bg-emerald-100 text-emerald-700"
                       : "bg-slate-200 text-slate-700"
@@ -645,6 +693,12 @@ export default function AnswerReadinessPanel() {
                 </div>
               )}
 
+              {severityFilter === "info" && counts.infos === 0 && (
+                <div className="rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-[11px] leading-relaxed text-slate-600">
+                  No informational findings on this page.
+                </div>
+              )}
+
               {severityFilter === "pass" && counts.passes === 0 && (
                 <div className="rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-[11px] leading-relaxed text-slate-600">
                   No passed checks on this page.
@@ -675,7 +729,8 @@ export default function AnswerReadinessPanel() {
 
               <div className="flex items-center justify-between gap-2">
                 <p className="text-[9.5px] leading-relaxed text-slate-400">
-                  {result.source.wordCount} words · {result.source.headingCount} headings ·{" "}
+                  {result.source.wordCount} words ·{" "}
+                  {result.source.headingCount} headings ·{" "}
                   {result.source.paragraphCount} paragraphs
                 </p>
               </div>
@@ -684,7 +739,11 @@ export default function AnswerReadinessPanel() {
         </div>
       </div>
 
-      <HelpModal open={helpOpen} onClose={() => setHelpOpen(false)} result={result} />
+      <HelpModal
+        open={helpOpen}
+        onClose={() => setHelpOpen(false)}
+        result={result}
+      />
     </div>
   );
 }

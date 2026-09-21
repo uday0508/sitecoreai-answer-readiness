@@ -934,13 +934,21 @@ function SiteReportSkeleton() {
           <div className="h-3 w-40 rounded bg-slate-100" />
         </div>
       </div>
-      <div className="grid grid-cols-5 gap-4">
-        {[0, 1, 2, 3, 4].map((i) => (
+      <div className="grid grid-cols-3 gap-4">
+        {[0, 1, 2].map((i) => (
           <div key={i} className="animate-pulse rounded-xl border border-slate-200 bg-white p-4">
             <div className="h-3 w-20 rounded bg-slate-100" />
             <div className="mt-3 h-1.5 w-full rounded bg-slate-100" />
             <div className="mt-3 h-3 w-full rounded bg-slate-100" />
             <div className="mt-1 h-3 w-2/3 rounded bg-slate-100" />
+          </div>
+        ))}
+      </div>
+      <div className="grid grid-cols-4 gap-4">
+        {[0, 1, 2, 3].map((i) => (
+          <div key={i} className="animate-pulse rounded-xl border border-slate-200 bg-white p-4">
+            <div className="h-3 w-16 rounded bg-slate-100" />
+            <div className="mt-3 h-1.5 w-full rounded bg-slate-100" />
           </div>
         ))}
       </div>

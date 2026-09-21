@@ -9,7 +9,10 @@ function truncate(value: string, max = MAX_SAMPLE_LEN): string {
   return value.slice(0, max - 1).trimEnd() + "…";
 }
 
-export function headingSamples(signals: HtmlSignals, onlyNonQuestion = false): FindingSample[] {
+export function headingSamples(
+  signals: HtmlSignals,
+  onlyNonQuestion = false
+): FindingSample[] {
   const list = onlyNonQuestion
     ? signals.headings.filter((h) => !h.isQuestion)
     : signals.headings;
@@ -21,7 +24,10 @@ export function headingSamples(signals: HtmlSignals, onlyNonQuestion = false): F
   }));
 }
 
-export function paragraphSamples(signals: HtmlSignals, limit = MAX_SAMPLES): FindingSample[] {
+export function paragraphSamples(
+  signals: HtmlSignals,
+  limit = MAX_SAMPLES
+): FindingSample[] {
   return signals.paragraphs.slice(0, limit).map((p, i) => ({
     kind: "paragraph" as const,
     value: truncate(p),
@@ -57,4 +63,26 @@ export function contextSample(signals: HtmlSignals): FindingSample | null {
   const text = signals.text;
   if (!text) return null;
   return { kind: "paragraph", value: truncate(text) };
+}
+
+export function linkSamples(
+  signals: HtmlSignals,
+  limit = MAX_SAMPLES
+): FindingSample[] {
+  return signals.externalLinks.slice(0, limit).map((l, i) => ({
+    kind: "link" as const,
+    value: truncate(`${l.domain} — ${l.text || l.href}`),
+    position: i + 1,
+  }));
+}
+
+export function dateSample(signals: HtmlSignals): FindingSample[] {
+  if (!signals.dateModified) return [];
+  const label = signals.dateModifiedSource ?? "unknown";
+  return [
+    {
+      kind: "meta" as const,
+      value: truncate(`${label}: ${signals.dateModified}`),
+    },
+  ];
 }

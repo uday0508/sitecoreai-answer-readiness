@@ -5,6 +5,7 @@ import type {
   CategoryResult,
   AnalysisFinding,
   FindingSeverity,
+  FindingSource,
 } from "@/src/types/analysis";
 import type { SeverityFilter } from "./AnswerReadinessPanel";
 
@@ -24,7 +25,11 @@ const CATEGORY_HELP: Record<string, string> = {
   "entity-clarity":
     "Clear entity definition and authorship signals help AI attribute claims to the right source.",
   "faq-readiness":
-    "FAQPage schema is the one structured data type consistently correlated with AI citation because it mirrors Q&A extraction.",
+    "FAQPage schema is the one structured data type consistently correlated with AI citation because it mirrors Q&A extraction. Pages with no FAQ content and no FAQPage schema score 0 in this category.",
+  freshness:
+    "AI engines weight recency. A machine-readable last-modified date helps them trust the page as current. Pages with no freshness signal score 0 in this category.",
+  citation:
+    "Pages that cite external sources and attribute claims to named sources are more quotable by AI answer engines.",
 };
 
 const LEVEL_LABEL: Record<string, string> = {
@@ -34,30 +39,76 @@ const LEVEL_LABEL: Record<string, string> = {
   unknown: "",
 };
 
+const SOURCE_LABEL: Record<FindingSource, string> = {
+  "open-graph": "OGP",
+  "schema-org": "schema.org",
+  "html-standard": "HTML",
+  "robots-exclusion": "robots.txt",
+  "llms-txt": "llms.txt",
+  heuristic: "heuristic",
+};
+
+const SOURCE_TOOLTIP: Record<FindingSource, string> = {
+  "open-graph":
+    "Detected by parsing Open Graph Protocol metadata (ogp.me).",
+  "schema-org":
+    "Detected by parsing schema.org JSON-LD or Microdata.",
+  "html-standard":
+    "Detected by parsing standard HTML elements (HTML Living Standard, WHATWG).",
+  "robots-exclusion":
+    "Detected by parsing robots.txt against Google's published crawler documentation.",
+  "llms-txt":
+    "Detected against the llms.txt convention (llmstxt.org). Emerging, not a formal standard.",
+  heuristic:
+    "Detected by an editorial heuristic — a pattern or threshold chosen by this app, not a published standard.",
+};
+
+function sourceChipClass(source: FindingSource): string {
+  if (source === "heuristic") {
+    return "bg-slate-100 text-slate-500 ring-slate-200";
+  }
+  if (source === "llms-txt") {
+    return "bg-amber-50 text-amber-700 ring-amber-200";
+  }
+  return "bg-blue-50 text-blue-700 ring-blue-200";
+}
+
 function severityDot(severity: FindingSeverity) {
   switch (severity) {
-    case "pass": return "bg-emerald-500";
-    case "warning": return "bg-amber-500";
-    case "error": return "bg-red-500";
-    default: return "bg-slate-300";
+    case "pass":
+      return "bg-emerald-500";
+    case "warning":
+      return "bg-amber-500";
+    case "error":
+      return "bg-red-500";
+    default:
+      return "bg-slate-300";
   }
 }
 
 function severityChip(severity: FindingSeverity) {
   switch (severity) {
-    case "pass": return "bg-emerald-50 text-emerald-700 ring-emerald-200";
-    case "warning": return "bg-amber-50 text-amber-700 ring-amber-200";
-    case "error": return "bg-red-50 text-red-700 ring-red-200";
-    default: return "bg-slate-50 text-slate-600 ring-slate-200";
+    case "pass":
+      return "bg-emerald-50 text-emerald-700 ring-emerald-200";
+    case "warning":
+      return "bg-amber-50 text-amber-700 ring-amber-200";
+    case "error":
+      return "bg-red-50 text-red-700 ring-red-200";
+    default:
+      return "bg-slate-50 text-slate-600 ring-slate-200";
   }
 }
 
 function severityLabel(severity: FindingSeverity) {
   switch (severity) {
-    case "pass": return "Pass";
-    case "warning": return "Warning";
-    case "error": return "Error";
-    default: return "Info";
+    case "pass":
+      return "Pass";
+    case "warning":
+      return "Warning";
+    case "error":
+      return "Error";
+    default:
+      return "Info";
   }
 }
 
@@ -74,7 +125,9 @@ function filterFindings(
   if (filter === "all") return findings;
   if (filter === "pass") return findings.filter((f) => f.severity === "pass");
   if (filter === "error") return findings.filter((f) => f.severity === "error");
-  if (filter === "warning") return findings.filter((f) => f.severity === "warning");
+  if (filter === "warning")
+    return findings.filter((f) => f.severity === "warning");
+  if (filter === "info") return findings.filter((f) => f.severity === "info");
   return findings;
 }
 
@@ -111,7 +164,8 @@ export default function CategoryCard({
   const ordered = [...actionable, ...passed];
 
   return (
-    <section      className={`overflow-hidden rounded-xl border bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)] ${
+    <section
+      className={`overflow-hidden rounded-xl border bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)] ${
         isInsufficient
           ? "border-slate-200"
           : isAllPass
@@ -141,7 +195,9 @@ export default function CategoryCard({
         </div>
         <div className="flex shrink-0 items-center gap-2">
           {isInsufficient ? (
-            <span className="text-[9.5px] font-medium text-slate-500">not scoreable</span>
+            <span className="text-[9.5px] font-medium text-slate-500">
+              not scoreable
+            </span>
           ) : (
             <>
               {noMatches ? (
@@ -241,6 +297,16 @@ function FindingRow({ finding }: { finding: AnalysisFinding }) {
             >
               {severityLabel(finding.severity)}
             </span>
+            {finding.source && (
+              <span
+                className={`rounded px-1.5 py-0.5 text-[8.5px] font-medium uppercase tracking-wide ring-1 ring-inset ${sourceChipClass(
+                  finding.source
+                )}`}
+                title={SOURCE_TOOLTIP[finding.source]}
+              >
+                {SOURCE_LABEL[finding.source]}
+              </span>
+            )}
             {finding.level && finding.level !== "unknown" && (
               <span className="rounded bg-slate-100 px-1 py-0.5 text-[8.5px] font-medium uppercase tracking-wide text-slate-600">
                 {LEVEL_LABEL[finding.level]}
@@ -256,11 +322,27 @@ function FindingRow({ finding }: { finding: AnalysisFinding }) {
                 className="ml-auto rounded p-0.5 text-slate-300 opacity-0 transition-opacity hover:bg-slate-100 hover:text-slate-700 group-hover:opacity-100"
               >
                 {copied ? (
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="h-3 w-3 text-emerald-600">
+                  <svg
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="3"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    className="h-3 w-3 text-emerald-600"
+                  >
                     <path d="M20 6 9 17l-5-5" />
                   </svg>
                 ) : (
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-3 w-3">
+                  <svg
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    className="h-3 w-3"
+                  >
                     <rect width="14" height="14" x="8" y="8" rx="2" ry="2" />
                     <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" />
                   </svg>
@@ -324,13 +406,17 @@ function FindingRow({ finding }: { finding: AnalysisFinding }) {
               </div>
               <div className="mt-1 space-y-0.5">
                 <div className="flex items-start gap-1">
-                  <span className="mt-0.5 text-[9px] font-bold text-red-500">−</span>
+                  <span className="mt-0.5 text-[9px] font-bold text-red-500">
+                    −
+                  </span>
                   <span className="text-[10.5px] text-slate-500 line-through">
                     {finding.suggestion.from}
                   </span>
                 </div>
                 <div className="flex items-start gap-1">
-                  <span className="mt-0.5 text-[9px] font-bold text-emerald-600">+</span>
+                  <span className="mt-0.5 text-[9px] font-bold text-emerald-600">
+                    +
+                  </span>
                   <span className="text-[10.5px] font-medium text-slate-800">
                     {finding.suggestion.to}
                   </span>

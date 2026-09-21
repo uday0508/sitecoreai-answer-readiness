@@ -5,11 +5,21 @@ export type AnalysisCategory =
   | "passage-integrity"
   | "factual-density"
   | "entity-clarity"
-  | "faq-readiness";
+  | "faq-readiness"
+  | "freshness"
+  | "citation";
 
 export type CategoryStatus = "evaluated" | "insufficient-content";
 
 export type FindingLevel = "page" | "layout" | "component" | "unknown";
+
+export type FindingSource =
+  | "open-graph"
+  | "schema-org"
+  | "html-standard"
+  | "robots-exclusion"
+  | "llms-txt"
+  | "heuristic";
 
 export interface FindingSample {
   kind: "heading" | "paragraph" | "schema" | "title" | "meta" | "link";
@@ -42,6 +52,7 @@ export interface AnalysisFinding {
   suggestion?: RewriteSuggestion;
   level: FindingLevel;
   automated: boolean;
+  source?: FindingSource;
 }
 
 export interface CategoryResult {
@@ -56,6 +67,18 @@ export interface CategoryResult {
 
 export type AnalysisMode = "scored" | "diagnostic";
 
+export interface AnalysisPolicy {
+  staleAfterMonths: number;
+  minExternalLinks: number;
+  minAttributions: number;
+}
+
+export const DEFAULT_ANALYSIS_POLICY: AnalysisPolicy = {
+  staleAfterMonths: 12,
+  minExternalLinks: 1,
+  minAttributions: 1,
+};
+
 export interface AnalysisResult {
   mode: AnalysisMode;
   score: number | null;
@@ -64,6 +87,7 @@ export interface AnalysisResult {
   diagnostics: string[];
   analyzedAt: string;
   primaryEntity: string | null;
+  policy: AnalysisPolicy;
   source: {
     pageId?: string;
     language?: string;

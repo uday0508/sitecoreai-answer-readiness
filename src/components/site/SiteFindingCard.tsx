@@ -1,27 +1,73 @@
 "use client";
 
-import type { AnalysisFinding, FindingSeverity } from "@/src/types/analysis";
+import type {
+  AnalysisFinding,
+  FindingSeverity,
+  FindingSource,
+} from "@/src/types/analysis";
 
 interface Props {
   finding: AnalysisFinding;
   index: number;
 }
 
+const SOURCE_LABEL: Record<FindingSource, string> = {
+  "open-graph": "OGP",
+  "schema-org": "schema.org",
+  "html-standard": "HTML",
+  "robots-exclusion": "robots.txt",
+  "llms-txt": "llms.txt",
+  heuristic: "heuristic",
+};
+
+const SOURCE_TOOLTIP: Record<FindingSource, string> = {
+  "open-graph":
+    "Detected by parsing Open Graph Protocol metadata (ogp.me).",
+  "schema-org":
+    "Detected by parsing schema.org JSON-LD or Microdata.",
+  "html-standard":
+    "Detected by parsing standard HTML elements (HTML Living Standard, WHATWG).",
+  "robots-exclusion":
+    "Detected by parsing robots.txt against Google's published crawler documentation.",
+  "llms-txt":
+    "Detected against the llms.txt convention (llmstxt.org). Emerging, not a formal standard.",
+  heuristic:
+    "Detected by an editorial heuristic — a pattern or threshold chosen by this app, not a published standard.",
+};
+
+function sourceChipClass(source: FindingSource): string {
+  if (source === "heuristic") {
+    return "bg-slate-100 text-slate-500 ring-slate-200";
+  }
+  if (source === "llms-txt") {
+    return "bg-amber-50 text-amber-700 ring-amber-200";
+  }
+  return "bg-blue-50 text-blue-700 ring-blue-200";
+}
+
 function severityChip(severity: FindingSeverity) {
   switch (severity) {
-    case "pass": return "bg-emerald-50 text-emerald-700 ring-emerald-200";
-    case "warning": return "bg-amber-50 text-amber-700 ring-amber-200";
-    case "error": return "bg-red-50 text-red-700 ring-red-200";
-    default: return "bg-slate-50 text-slate-600 ring-slate-200";
+    case "pass":
+      return "bg-emerald-50 text-emerald-700 ring-emerald-200";
+    case "warning":
+      return "bg-amber-50 text-amber-700 ring-amber-200";
+    case "error":
+      return "bg-red-50 text-red-700 ring-red-200";
+    default:
+      return "bg-slate-50 text-slate-600 ring-slate-200";
   }
 }
 
 function severityLabel(severity: FindingSeverity) {
   switch (severity) {
-    case "pass": return "Pass";
-    case "warning": return "Warning";
-    case "error": return "Error";
-    default: return "Info";
+    case "pass":
+      return "Pass";
+    case "warning":
+      return "Warning";
+    case "error":
+      return "Error";
+    default:
+      return "Info";
   }
 }
 
@@ -42,13 +88,25 @@ export default function SiteFindingCard({ finding, index }: Props) {
             <h4 className="min-w-0 flex-1 text-[17px] font-semibold leading-snug text-slate-900">
               {finding.title}
             </h4>
-            <span
-              className={`shrink-0 rounded-full px-3 py-0.5 text-[12.5px] font-semibold ring-1 ring-inset ${severityChip(
-                finding.severity
-              )}`}
-            >
-              {severityLabel(finding.severity)}
-            </span>
+            <div className="flex shrink-0 items-center gap-1.5">
+              {finding.source && (
+                <span
+                  className={`rounded px-2 py-0.5 text-[11px] font-medium uppercase tracking-wide ring-1 ring-inset ${sourceChipClass(
+                    finding.source
+                  )}`}
+                  title={SOURCE_TOOLTIP[finding.source]}
+                >
+                  {SOURCE_LABEL[finding.source]}
+                </span>
+              )}
+              <span
+                className={`rounded-full px-3 py-0.5 text-[12.5px] font-semibold ring-1 ring-inset ${severityChip(
+                  finding.severity
+                )}`}
+              >
+                {severityLabel(finding.severity)}
+              </span>
+            </div>
           </div>
 
           <p className="mt-3 text-[15px] leading-relaxed text-slate-600">
@@ -71,13 +129,17 @@ export default function SiteFindingCard({ finding, index }: Props) {
               </div>
               <div className="mt-3 space-y-2">
                 <div className="flex items-start gap-3">
-                  <span className="mt-0.5 text-[14px] font-bold text-red-500">−</span>
+                  <span className="mt-0.5 text-[14px] font-bold text-red-500">
+                    −
+                  </span>
                   <span className="text-[15px] text-slate-500 line-through">
                     {finding.suggestion.from}
                   </span>
                 </div>
                 <div className="flex items-start gap-3">
-                  <span className="mt-0.5 text-[14px] font-bold text-emerald-600">+</span>
+                  <span className="mt-0.5 text-[14px] font-bold text-emerald-600">
+                    +
+                  </span>
                   <span className="text-[15px] font-medium text-slate-800">
                     {finding.suggestion.to}
                   </span>
@@ -124,7 +186,9 @@ export default function SiteFindingCard({ finding, index }: Props) {
 
           <div className="mt-5 flex flex-wrap items-center gap-x-5 gap-y-2 border-t border-slate-100 pt-4 text-[13.5px] text-slate-500">
             <span>
-              <span className="font-semibold text-slate-700">+{finding.scoreImpact}</span>{" "}
+              <span className="font-semibold text-slate-700">
+                +{finding.scoreImpact}
+              </span>{" "}
               point impact
             </span>
             {finding.level && finding.level !== "unknown" && (

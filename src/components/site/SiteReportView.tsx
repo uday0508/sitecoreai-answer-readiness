@@ -24,6 +24,8 @@ const CATEGORY_LABELS: Record<AnalysisCategory, string> = {
   "factual-density": "Factual Density",
   "entity-clarity": "Entity Clarity",
   "faq-readiness": "FAQ Readiness",
+  freshness: "Freshness",
+  citation: "Citation Signals",
 };
 
 const CATEGORY_HELP: Record<AnalysisCategory, string> = {
@@ -36,8 +38,18 @@ const CATEGORY_HELP: Record<AnalysisCategory, string> = {
   "entity-clarity":
     "Clear entity definition and authorship signals help AI attribute claims to the right source.",
   "faq-readiness":
-    "FAQPage schema is the one structured data type consistently correlated with AI citation because it mirrors Q&A extraction.",
+    "FAQPage schema is the one structured data type consistently correlated with AI citation because it mirrors Q&A extraction. Pages with no FAQ content and no FAQPage schema score 0 in this category.",
+  freshness:
+    "AI engines weight recency. A machine-readable last-modified date (article:modified_time, dateModified in JSON-LD) helps them trust the page as current. Pages with no freshness signal score 0 in this category.",
+  citation:
+    "Pages that cite external sources and attribute claims to named sources are more quotable by AI answer engines.",
 };
+
+const PRIMARY_CATEGORIES: AnalysisCategory[] = [
+  "answer-structure",
+  "passage-integrity",
+  "factual-density",
+];
 
 function readinessLabel(score: number) {
   if (score >= 80) return "Good readiness";
@@ -62,15 +74,11 @@ function scoreBar(score: number | null) {
   return "bg-red-500";
 }
 
-function scorePill(score: number, max: number) {
-  const ratio = max > 0 ? score / max : 0;
-  if (ratio === 1) return "bg-emerald-50 text-emerald-700 ring-emerald-200";
-  if (ratio >= 0.6) return "bg-amber-50 text-amber-700 ring-amber-200";
-  return "bg-red-50 text-red-700 ring-red-200";
-}
-
 function safeFilename(name: string, suffix: string) {
-  const slug = name.replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "").toLowerCase();
+  const slug = name
+    .replace(/[^a-z0-9]+/gi, "-")
+    .replace(/^-|-$/g, "")
+    .toLowerCase();
   return `${slug || "page"}-${suffix}.md`;
 }
 
@@ -93,7 +101,8 @@ export default function SiteReportView({
     const handler = (e: KeyboardEvent) => {
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       const target = e.target as HTMLElement | null;
-      if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA")) return;
+      if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA"))
+        return;
       if (e.key === "[") {
         e.preventDefault();
         onPrev();
@@ -146,7 +155,9 @@ export default function SiteReportView({
               {result.diagnostics.map((d, i) => (
                 <li key={i} className="flex items-start gap-2">
                   <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500" />
-                  <span className="text-[14px] leading-relaxed text-slate-700">{d}</span>
+                  <span className="text-[14px] leading-relaxed text-slate-700">
+                    {d}
+                  </span>
                 </li>
               ))}
             </ul>
@@ -201,6 +212,13 @@ export default function SiteReportView({
   const topAction = actionable[0] ?? null;
   const delta = siteAverage !== null ? score - siteAverage : null;
 
+  const primary = result.categories.filter((c) =>
+    PRIMARY_CATEGORIES.includes(c.category)
+  );
+  const supporting = result.categories.filter(
+    (c) => !PRIMARY_CATEGORIES.includes(c.category)
+  );
+
   return (
     <div className="mx-auto w-full max-w-6xl px-10 pb-20">
       <StickyHeader
@@ -235,7 +253,9 @@ export default function SiteReportView({
                   <span className="text-slate-500">
                     {delta > 0 ? "+" : ""}
                     {delta} vs site avg{" "}
-                    <span className="font-semibold text-slate-700">{siteAverage}</span>
+                    <span className="font-semibold text-slate-700">
+                      {siteAverage}
+                    </span>
                   </span>
                 </>
               )}
@@ -256,21 +276,29 @@ export default function SiteReportView({
             </div>
 
             <div className="mt-5 text-[14px] text-slate-400">
-              {result.source.wordCount} words · {result.source.headingCount} headings ·{" "}
-              {result.source.paragraphCount} paragraphs
+              {result.source.wordCount} words · {result.source.headingCount}{" "}
+              headings · {result.source.paragraphCount} paragraphs
             </div>
           </div>
 
           <div className="flex shrink-0 flex-col items-end">
-            <div className={`text-6xl font-bold leading-none ${scoreTone(result.score)}`}>
+            <div
+              className={`text-6xl font-bold leading-none ${scoreTone(
+                result.score
+              )}`}
+            >
               {result.score ?? "—"}
               {result.score !== null && (
-                <span className="text-2xl font-medium text-slate-400">/100</span>
+                <span className="text-2xl font-medium text-slate-400">
+                  /100
+                </span>
               )}
             </div>
             <div className="mt-5 h-3 w-64 overflow-hidden rounded-full bg-slate-100">
               <div
-                className={`h-full rounded-full ${scoreBar(result.score)} transition-all`}
+                className={`h-full rounded-full ${scoreBar(
+                  result.score
+                )} transition-all`}
                 style={{ width: `${score}%` }}
               />
             </div>
@@ -298,18 +326,23 @@ export default function SiteReportView({
       </section>
 
       <section className="mt-8 space-y-4">
-        <h3 className="text-[15px] font-semibold uppercase tracking-[0.06em] text-slate-500">
-          Category breakdown
-        </h3>
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
-          {result.categories.map((cat) => {
+        <div className="flex items-baseline justify-between">
+          <h3 className="text-[15px] font-semibold uppercase tracking-[0.06em] text-slate-500">
+            Category breakdown
+          </h3>
+          <span className="text-[12.5px] text-slate-400">
+            7 categories · 100 points
+          </span>
+        </div>
+
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+          {primary.map((cat) => {
             const unevaluated = cat.status === "insufficient-content";
             const ratio = cat.maxScore > 0 ? cat.score / cat.maxScore : 0;
             const pct = Math.round(ratio * 100);
             const catActionable = cat.findings.filter(
               (f) => f.severity === "error" || f.severity === "warning"
             ).length;
-
             return (
               <CategoryTile
                 key={cat.category}
@@ -320,6 +353,31 @@ export default function SiteReportView({
                 pct={pct}
                 unevaluated={unevaluated}
                 issueCount={catActionable}
+                variant="primary"
+              />
+            );
+          })}
+        </div>
+
+        <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+          {supporting.map((cat) => {
+            const unevaluated = cat.status === "insufficient-content";
+            const ratio = cat.maxScore > 0 ? cat.score / cat.maxScore : 0;
+            const pct = Math.round(ratio * 100);
+            const catActionable = cat.findings.filter(
+              (f) => f.severity === "error" || f.severity === "warning"
+            ).length;
+            return (
+              <CategoryTile
+                key={cat.category}
+                label={CATEGORY_LABELS[cat.category]}
+                help={CATEGORY_HELP[cat.category]}
+                score={cat.score}
+                maxScore={cat.maxScore}
+                pct={pct}
+                unevaluated={unevaluated}
+                issueCount={catActionable}
+                variant="compact"
               />
             );
           })}
@@ -347,9 +405,20 @@ export default function SiteReportView({
           <div className="rounded-xl border border-slate-200 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
             <div className="divide-y divide-slate-100">
               {passed.map((finding) => (
-                <div key={finding.id} className="flex items-start gap-4 px-7 py-4">
+                <div
+                  key={finding.id}
+                  className="flex items-start gap-4 px-7 py-4"
+                >
                   <span className="mt-1 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-white">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round" className="h-3 w-3">
+                    <svg
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="3.5"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      className="h-3 w-3"
+                    >
                       <path d="M20 6 9 17l-5-5" />
                     </svg>
                   </span>
@@ -444,7 +513,15 @@ function StickyHeader({
             title="Previous page ( [ )"
             aria-label="Previous page"
           >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4">
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className="h-4 w-4"
+            >
               <path d="m15 18-6-6 6-6" />
             </svg>
           </button>
@@ -467,7 +544,15 @@ function StickyHeader({
             title="Next page ( ] )"
             aria-label="Next page"
           >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4">
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className="h-4 w-4"
+            >
               <path d="m9 18 6-6-6-6" />
             </svg>
           </button>
@@ -485,6 +570,7 @@ function CategoryTile({
   pct,
   unevaluated,
   issueCount,
+  variant = "compact",
 }: {
   label: string;
   help: string;
@@ -493,27 +579,70 @@ function CategoryTile({
   pct: number;
   unevaluated: boolean;
   issueCount: number;
+  variant?: "primary" | "compact";
 }) {
   const [showHelp, setShowHelp] = useState(false);
 
+  const isPrimary = variant === "primary";
+  const isZero = !unevaluated && score === 0;
+  const isPerfect = !unevaluated && score === maxScore;
+  const hasIssues = !unevaluated && issueCount > 0;
+
+  const accent = unevaluated
+    ? "bg-slate-200"
+    : isPerfect
+    ? "bg-emerald-500"
+    : isZero
+    ? "bg-red-500"
+    : pct >= 60
+    ? "bg-amber-500"
+    : "bg-red-500";
+
+  const pillTone = unevaluated
+    ? "bg-slate-100 text-slate-500 ring-slate-200"
+    : isPerfect
+    ? "bg-emerald-50 text-emerald-700 ring-emerald-200"
+    : isZero
+    ? "bg-red-50 text-red-700 ring-red-200"
+    : pct >= 60
+    ? "bg-amber-50 text-amber-700 ring-amber-200"
+    : "bg-red-50 text-red-700 ring-red-200";
+
   return (
-    <div className="flex flex-col rounded-xl border border-slate-200 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
-      <div className="flex items-start justify-between gap-2">
-        <span className="text-[12px] font-semibold uppercase tracking-[0.06em] text-slate-500">
+    <div
+      className={`group relative flex flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition-shadow hover:shadow-[0_2px_8px_rgba(15,23,42,0.06)] ${
+        isPrimary ? "p-5" : "p-4"
+      }`}
+    >
+      <span
+        className={`absolute left-0 top-0 h-full w-1 ${accent}`}
+        aria-hidden
+      />
+
+      <div className="flex items-start justify-between gap-3">
+        <div
+          className={`min-w-0 font-semibold uppercase tracking-[0.08em] text-slate-500 ${
+            isPrimary ? "text-[11px]" : "text-[10px]"
+          }`}
+          title={label}
+        >
           {label}
+        </div>
+
+        <span
+          className={`shrink-0 rounded-full font-bold ring-1 ring-inset ${pillTone} ${
+            isPrimary ? "px-3 py-1 text-[13px]" : "px-2.5 py-0.5 text-[12px]"
+          }`}
+        >
+          {unevaluated ? "N/A" : `${score}/${maxScore}`}
         </span>
-        {unevaluated ? (
-          <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-[12px] font-bold text-slate-500">
-            N/A
-          </span>
-        ) : (
-          <span className={`rounded-full px-2.5 py-0.5 text-[12.5px] font-bold ring-1 ring-inset ${scorePill(score, maxScore)}`}>
-            {score}/{maxScore}
-          </span>
-        )}
       </div>
 
-      <div className="mt-4 h-2 w-full overflow-hidden rounded-full bg-slate-100">
+      <div
+        className={`w-full overflow-hidden rounded-full bg-slate-100 ${
+          isPrimary ? "mt-5 h-2.5" : "mt-4 h-2"
+        }`}
+      >
         {unevaluated ? (
           <div
             className="h-full w-full"
@@ -524,29 +653,48 @@ function CategoryTile({
           />
         ) : (
           <div
-            className={`h-full rounded-full ${scoreBar(pct)} transition-all`}
-            style={{ width: `${pct}%` }}
+            className={`h-full rounded-full ${accent} transition-all`}
+            style={{ width: `${Math.max(pct, score > 0 ? 4 : 0)}%` }}
           />
         )}
       </div>
 
-      <div className="mt-3 flex items-center justify-between">
+      <div className="mt-3 flex items-center justify-between gap-2">
+        {unevaluated ? (
+          <span className="text-[11.5px] font-medium text-slate-400">
+            Not enough content
+          </span>
+        ) : isPerfect ? (
+          <span className="text-[11.5px] font-medium text-emerald-700">
+            All checks passed
+          </span>
+        ) : isZero ? (
+          <span className="text-[11.5px] font-medium text-red-700">
+            Nothing detected
+          </span>
+        ) : hasIssues ? (
+          <span className="text-[11.5px] font-medium text-amber-700">
+            {issueCount} to fix
+          </span>
+        ) : (
+          <span className="text-[11.5px] font-medium text-slate-400">
+            No issues
+          </span>
+        )}
+
         <button
           type="button"
           onClick={() => setShowHelp((v) => !v)}
-          className="text-[12.5px] font-medium text-slate-400 transition-colors hover:text-slate-700"
+          className="text-[11px] font-medium text-slate-400 transition-colors hover:text-slate-700"
         >
-          {showHelp ? "Hide help" : "What this means"}
+          {showHelp ? "Hide" : "Details"}
         </button>
-        {!unevaluated && issueCount > 0 && (
-          <span className="text-[12.5px] font-medium text-amber-700">
-            {issueCount} to fix
-          </span>
-        )}
       </div>
 
       {showHelp && (
-        <p className="mt-2.5 text-[13px] leading-relaxed text-slate-500">{help}</p>
+        <p className="mt-3 border-t border-slate-100 pt-3 text-[11.5px] leading-relaxed text-slate-500">
+          {help}
+        </p>
       )}
     </div>
   );
@@ -590,7 +738,9 @@ function buildFullReport(report: PageReport, siteAverage: number | null): string
     lines.push(`Score: ${result.score}/100`);
     if (siteAverage !== null) {
       const delta = result.score - siteAverage;
-      lines.push(`Site average: ${siteAverage}/100 (${delta > 0 ? "+" : ""}${delta})`);
+      lines.push(
+        `Site average: ${siteAverage}/100 (${delta > 0 ? "+" : ""}${delta})`
+      );
     }
   } else {
     lines.push("Status: Not enough content to score");
@@ -610,11 +760,15 @@ function buildFullReport(report: PageReport, siteAverage: number | null): string
   if (actionable.length > 0) {
     lines.push(`Actionable findings (${actionable.length}):`);
     for (const f of actionable) {
-      lines.push(`  [${f.severity.toUpperCase()}] ${f.title} (+${f.scoreImpact} pts)`);
+      lines.push(
+        `  [${f.severity.toUpperCase()}] ${f.title} (+${f.scoreImpact} pts)`
+      );
       lines.push(`    ${f.description}`);
       lines.push(`    Fix: ${f.recommendation}`);
       if (f.suggestion) {
-        lines.push(`    Suggest: "${f.suggestion.from}" → "${f.suggestion.to}"`);
+        lines.push(
+          `    Suggest: "${f.suggestion.from}" → "${f.suggestion.to}"`
+        );
       }
     }
     lines.push("");
@@ -631,7 +785,10 @@ function buildFullReport(report: PageReport, siteAverage: number | null): string
   return lines.join("\n");
 }
 
-function buildSummaryReport(report: PageReport, siteAverage: number | null): string {
+function buildSummaryReport(
+  report: PageReport,
+  siteAverage: number | null
+): string {
   const { page, result } = report;
   const lines: string[] = [];
   lines.push(`Answer Readiness — ${page.name}`);
@@ -639,7 +796,9 @@ function buildSummaryReport(report: PageReport, siteAverage: number | null): str
     lines.push(`Score: ${result.score}/100`);
     if (siteAverage !== null) {
       const delta = result.score - siteAverage;
-      lines.push(`Site average: ${siteAverage}/100 (${delta > 0 ? "+" : ""}${delta})`);
+      lines.push(
+        `Site average: ${siteAverage}/100 (${delta > 0 ? "+" : ""}${delta})`
+      );
     }
   } else {
     lines.push("Status: Not enough content to score");
@@ -671,7 +830,9 @@ function buildChecklist(report: PageReport): string {
       lines.push(`- [ ] ${f.title}`);
       lines.push(`      ${f.recommendation}`);
       if (f.suggestion) {
-        lines.push(`      Replace: "${f.suggestion.from}" → "${f.suggestion.to}"`);
+        lines.push(
+          `      Replace: "${f.suggestion.from}" → "${f.suggestion.to}"`
+        );
       }
     }
     lines.push("");
