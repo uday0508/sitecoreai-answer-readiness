@@ -1,4 +1,5 @@
 import Link from "next/link";
+import SelfAnalysis from "./SelfAnalysis";
 
 export const metadata = {
   metadataBase: new URL("https://sitecoreai-answer-readiness.vercel.app"),
@@ -12,8 +13,7 @@ export const metadata = {
   },
   openGraph: {
     title: "Answer Readiness — SitecoreAI Marketplace App",
-    description:
-      "Deterministic AEO/GEO scoring inside SitecoreAI Page Builder.",
+    description: "Deterministic AEO/GEO scoring inside SitecoreAI Page Builder.",
     url: "https://sitecoreai-answer-readiness.vercel.app",
     siteName: "Answer Readiness",
     type: "website",
@@ -23,13 +23,12 @@ export const metadata = {
 const MARKETPLACE_URL =
   "https://portal.sitecorecloud.io/marketplace/details?id=pub-35343dea-8835-4c7d-9f51-02ac96d4dc42";
 
-const SITE_URL = "https://sitecoreai-answer-readiness.vercel.app";
-
 export default function Home() {
   return (
     <div className="min-h-screen bg-white text-slate-900 antialiased">
       <SiteHeader />
       <Hero />
+      <SelfAnalysisSection />
       <Problem />
       <HowItWorks />
       <ScoreModel />
@@ -63,6 +62,9 @@ function SiteHeader() {
         </Link>
 
         <nav className="hidden items-center gap-7 text-[13.5px] font-medium text-slate-600 md:flex">
+          <a href="#live" className="transition-colors hover:text-slate-900">
+            Live demo
+          </a>
           <a href="#how" className="transition-colors hover:text-slate-900">
             How it works
           </a>
@@ -74,20 +76,12 @@ function SiteHeader() {
           </a>
         </nav>
 
-        <div className="flex items-center gap-2">
-          <a
-            href={SITE_URL}
-            className="hidden rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-[12.5px] font-medium text-slate-700 transition-colors hover:bg-slate-50 md:inline-block"
-          >
-            Docs
-          </a>
-          <a
-            href={MARKETPLACE_URL}
-            className="rounded-lg bg-slate-900 px-3.5 py-1.5 text-[12.5px] font-semibold text-white shadow-sm transition-all hover:bg-slate-800"
-          >
-            Install
-          </a>
-        </div>
+        <a
+          href={MARKETPLACE_URL}
+          className="rounded-lg bg-slate-900 px-3.5 py-1.5 text-[12.5px] font-semibold text-white shadow-sm transition-all hover:bg-slate-800"
+        >
+          Install
+        </a>
       </div>
     </header>
   );
@@ -154,15 +148,14 @@ function Hero() {
               </svg>
             </a>
             <a
-              href="#how"
+              href="#live"
               className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-5 py-2.5 text-[14px] font-semibold text-slate-700 shadow-sm transition-all hover:border-slate-300 hover:bg-slate-50"
             >
-              See how it works
+              See the live demo
             </a>
           </div>
         </div>
 
-        {/* Hero mockup */}
         <div className="relative mx-auto mt-12 max-w-5xl translate-y-px">
           <div className="overflow-hidden rounded-t-2xl border border-b-0 border-slate-200 bg-white shadow-[0_20px_50px_-24px_rgba(15,23,42,0.3)]">
             <PanelChrome />
@@ -204,7 +197,6 @@ function PanelChrome() {
 function PanelBody() {
   return (
     <div className="grid grid-cols-1 md:grid-cols-[240px_1fr]">
-      {/* Left sidebar */}
       <div className="border-b border-slate-200 bg-white p-3.5 md:border-b-0 md:border-r">
         <div className="flex items-center gap-1.5">
           <span className="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[9.5px] font-medium text-slate-600">
@@ -243,7 +235,6 @@ function PanelBody() {
         </div>
       </div>
 
-      {/* Main area */}
       <div className="bg-white p-4">
         <div className="flex flex-wrap items-center gap-1 rounded-lg bg-slate-50 p-0.5">
           <FilterChip label="All" count={4} active />
@@ -350,9 +341,17 @@ function CategoryBar({
 }) {
   const pct = Math.round((value / max) * 100);
   const color =
-    tone === "emerald" ? "bg-emerald-500" : tone === "amber" ? "bg-amber-500" : "bg-red-500";
+    tone === "emerald"
+      ? "bg-emerald-500"
+      : tone === "amber"
+      ? "bg-amber-500"
+      : "bg-red-500";
   const labelColor =
-    tone === "emerald" ? "text-emerald-700" : tone === "amber" ? "text-amber-700" : "text-red-700";
+    tone === "emerald"
+      ? "text-emerald-700"
+      : tone === "amber"
+      ? "text-amber-700"
+      : "text-red-700";
 
   return (
     <div>
@@ -392,11 +391,15 @@ function FilterChip({
   return (
     <div
       className={`flex flex-1 items-center justify-center gap-1 rounded-md px-2 py-0.5 text-[10.5px] font-semibold ${
-        active ? "bg-white text-slate-900 shadow-sm ring-1 ring-inset ring-slate-200" : "text-slate-500"
+        active
+          ? "bg-white text-slate-900 shadow-sm ring-1 ring-inset ring-slate-200"
+          : "text-slate-500"
       }`}
     >
       <span>{label}</span>
-      <span className={`rounded-full px-1 text-[9px] font-bold ${chipBg}`}>{count}</span>
+      <span className={`rounded-full px-1 text-[9px] font-bold ${chipBg}`}>
+        {count}
+      </span>
     </div>
   );
 }
@@ -450,7 +453,8 @@ function FindingRow({
           )}
           <div className="mt-1.5 flex items-center gap-2 text-[10px] text-slate-500">
             <span>
-              <span className="font-semibold text-slate-700">+{impact}</span> point impact
+              <span className="font-semibold text-slate-700">+{impact}</span>{" "}
+              point impact
             </span>
           </div>
         </div>
@@ -460,12 +464,49 @@ function FindingRow({
 }
 
 /* ─────────────────────────────────────────────────────────────────
+   LIVE SELF-ANALYSIS
+   ───────────────────────────────────────────────────────────────── */
+
+function SelfAnalysisSection() {
+  return (
+    <section id="live" className="border-b border-slate-200 bg-white">
+      <div className="mx-auto w-full max-w-5xl px-6 py-16 md:px-10 md:py-20">
+        <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+          <div>
+            <div className="text-[12px] font-semibold uppercase tracking-[0.1em] text-indigo-600">
+              Live demo
+            </div>
+            <h2 className="mt-3 text-3xl font-semibold leading-[1.15] tracking-[-0.02em] md:text-4xl">
+              Run it on this page
+            </h2>
+          </div>
+          <p className="max-w-md text-[15px] leading-relaxed text-slate-600 md:text-right">
+            Not a mockup. Not a screenshot. The engine is analyzing the page
+            you are reading right now.
+          </p>
+        </div>
+
+        <div className="mt-10">
+          <SelfAnalysis />
+        </div>
+
+        <p className="mt-5 text-[13px] leading-relaxed text-slate-500">
+          This marketing page scores poorly on answer readiness, and that is
+          the point. It has the same structural problems we help you find on
+          your own pages. If it scored 95, the tool would not be honest.
+        </p>
+      </div>
+    </section>
+  );
+}
+
+/* ─────────────────────────────────────────────────────────────────
    PROBLEM
    ───────────────────────────────────────────────────────────────── */
 
 function Problem() {
   return (
-    <section className="border-b border-slate-200 bg-white">
+    <section className="border-b border-slate-200 bg-slate-50">
       <div className="mx-auto w-full max-w-5xl px-6 py-16 md:px-10 md:py-20">
         <div className="max-w-3xl">
           <div className="text-[12px] font-semibold uppercase tracking-[0.1em] text-indigo-600">
@@ -500,7 +541,7 @@ function Problem() {
 
 function HowItWorks() {
   return (
-    <section id="how" className="border-b border-slate-200 bg-slate-50">
+    <section id="how" className="border-b border-slate-200 bg-white">
       <div className="mx-auto w-full max-w-7xl px-6 py-16 md:px-10 md:py-20">
         <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
           <div>
@@ -529,7 +570,15 @@ function HowItWorks() {
               "Copy fix to clipboard",
             ]}
             icon={
-              <svg viewBox="0 0 24 24" fill="none" stroke="#4f46e5" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5">
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="#4f46e5"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className="h-5 w-5"
+              >
                 <path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z" />
                 <path d="M14 2v4a2 2 0 0 0 2 2h4" />
               </svg>
@@ -547,7 +596,15 @@ function HowItWorks() {
               "Batch analysis with progress",
             ]}
             icon={
-              <svg viewBox="0 0 24 24" fill="none" stroke="#4f46e5" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5">
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="#4f46e5"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className="h-5 w-5"
+              >
                 <rect x="3" y="3" width="7" height="7" rx="1" />
                 <rect x="14" y="3" width="7" height="7" rx="1" />
                 <rect x="3" y="14" width="7" height="7" rx="1" />
@@ -590,8 +647,19 @@ function SurfaceCard({
 
       <ul className="mt-4 space-y-1.5">
         {bullets.map((b) => (
-          <li key={b} className="flex items-start gap-2 text-[13.5px] text-slate-700">
-            <svg viewBox="0 0 24 24" fill="none" stroke="#4f46e5" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="mt-1 h-2.5 w-2.5 shrink-0">
+          <li
+            key={b}
+            className="flex items-start gap-2 text-[13.5px] text-slate-700"
+          >
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="#4f46e5"
+              strokeWidth="3"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className="mt-1 h-2.5 w-2.5 shrink-0"
+            >
               <path d="M20 6 9 17l-5-5" />
             </svg>
             <span>{b}</span>
@@ -608,15 +676,35 @@ function SurfaceCard({
 
 function ScoreModel() {
   const rows = [
-    { name: "Answer Structure", weight: 35, checks: "Heading hierarchy, opening paragraphs, question headings, scannable blocks" },
-    { name: "Passage Integrity", weight: 25, checks: "Self-containment, pronoun density, context-dependent references" },
-    { name: "Factual Density", weight: 20, checks: "Numbers, dates, comparisons, concrete claims" },
-    { name: "Entity Clarity", weight: 10, checks: "Definitions, title alignment, author signals, metadata" },
-    { name: "FAQ Readiness", weight: 10, checks: "Question-answer structure, FAQPage schema consistency" },
+    {
+      name: "Answer Structure",
+      weight: 35,
+      checks: "Heading hierarchy, opening paragraphs, question headings, scannable blocks",
+    },
+    {
+      name: "Passage Integrity",
+      weight: 25,
+      checks: "Self-containment, pronoun density, context-dependent references",
+    },
+    {
+      name: "Factual Density",
+      weight: 20,
+      checks: "Numbers, dates, comparisons, concrete claims",
+    },
+    {
+      name: "Entity Clarity",
+      weight: 10,
+      checks: "Definitions, title alignment, author signals, metadata",
+    },
+    {
+      name: "FAQ Readiness",
+      weight: 10,
+      checks: "Question-answer structure, FAQPage schema consistency",
+    },
   ];
 
   return (
-    <section id="score" className="border-b border-slate-200 bg-white">
+    <section id="score" className="border-b border-slate-200 bg-slate-50">
       <div className="mx-auto w-full max-w-7xl px-6 py-16 md:px-10 md:py-20">
         <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
           <div>
@@ -677,14 +765,26 @@ function ScoreModel() {
 
 function Principles() {
   const items = [
-    { title: "Deterministic", body: "No model produces the score. Auditable and reproducible." },
-    { title: "Evidence-first", body: "Every finding carries the sample that triggered it." },
-    { title: "Actionable", body: "Plain-language recommendations and rewrites you can copy." },
-    { title: "Page Builder native", body: "Runs where the marketer works. Same engine everywhere." },
+    {
+      title: "Deterministic",
+      body: "No model produces the score. Auditable and reproducible.",
+    },
+    {
+      title: "Evidence-first",
+      body: "Every finding carries the sample that triggered it.",
+    },
+    {
+      title: "Actionable",
+      body: "Plain-language recommendations and rewrites you can copy.",
+    },
+    {
+      title: "Page Builder native",
+      body: "Runs where the marketer works. Same engine everywhere.",
+    },
   ];
 
   return (
-    <section className="border-b border-slate-200 bg-slate-50">
+    <section className="border-b border-slate-200 bg-white">
       <div className="mx-auto w-full max-w-7xl px-6 py-16 md:px-10 md:py-20">
         <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
           <div>
@@ -726,7 +826,7 @@ function Principles() {
 
 function Honest() {
   return (
-    <section id="limits" className="border-b border-slate-200 bg-white">
+    <section id="limits" className="border-b border-slate-200 bg-slate-50">
       <div className="mx-auto w-full max-w-7xl px-6 py-16 md:px-10 md:py-20">
         <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
           <div>
@@ -744,12 +844,30 @@ function Honest() {
         </div>
 
         <div className="mt-10 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          <LimitRow title="Not a ranking score" body="Internal content-readiness indicator. Does not predict or guarantee citation in any AI surface." />
-          <LimitRow title="Published HTML only" body="Unsaved edits in Page Builder are not reflected until the page is published." />
-          <LimitRow title="No crawler checks" body="Does not inspect robots.txt, Google-Extended, or content freshness metadata." />
-          <LimitRow title="No external fact-checking" body="Measures structure and answer-readiness signals only, not factual accuracy." />
-          <LimitRow title="No AI in the pipeline" body="The scoring engine is deterministic. No LLM is used to produce the score." />
-          <LimitRow title="No page modifications" body="Reports and suggests. Does not write to your Sitecore content without a supported integration." />
+          <LimitRow
+            title="Not a ranking score"
+            body="Internal content-readiness indicator. Does not predict or guarantee citation in any AI surface."
+          />
+          <LimitRow
+            title="Published HTML only"
+            body="Unsaved edits in Page Builder are not reflected until the page is published."
+          />
+          <LimitRow
+            title="No crawler checks"
+            body="Does not inspect robots.txt, Google-Extended, or content freshness metadata."
+          />
+          <LimitRow
+            title="No external fact-checking"
+            body="Measures structure and answer-readiness signals only, not factual accuracy."
+          />
+          <LimitRow
+            title="No AI in the pipeline"
+            body="The scoring engine is deterministic. No LLM is used to produce the score."
+          />
+          <LimitRow
+            title="No page modifications"
+            body="Reports and suggests. Does not write to your Sitecore content without a supported integration."
+          />
         </div>
       </div>
     </section>
@@ -758,17 +876,27 @@ function Honest() {
 
 function LimitRow({ title, body }: { title: string; body: string }) {
   return (
-    <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-4">
+    <div className="rounded-xl border border-slate-200 bg-white p-4">
       <div className="flex items-start gap-3">
-        <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-slate-200 text-slate-600">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="h-3 w-3">
+        <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-600">
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            className="h-3 w-3"
+          >
             <path d="M12 8v4" />
             <path d="M12 16h.01" />
           </svg>
         </span>
         <div className="min-w-0 flex-1">
           <div className="text-[14.5px] font-semibold text-slate-900">{title}</div>
-          <p className="mt-1 text-[13.5px] leading-relaxed text-slate-600">{body}</p>
+          <p className="mt-1 text-[13.5px] leading-relaxed text-slate-600">
+            {body}
+          </p>
         </div>
       </div>
     </div>
@@ -809,16 +937,18 @@ function CTA() {
             className="group inline-flex items-center gap-2 rounded-xl bg-white px-5 py-2.5 text-[14px] font-semibold text-slate-900 shadow-lg shadow-slate-950/40 transition-all hover:bg-slate-100"
           >
             Install from Marketplace
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5">
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5"
+            >
               <path d="M5 12h14" />
               <path d="m12 5 7 7-7 7" />
             </svg>
-          </a>
-          <a
-            href={SITE_URL}
-            className="inline-flex items-center gap-2 rounded-xl border border-white/20 bg-white/5 px-5 py-2.5 text-[14px] font-semibold text-white backdrop-blur transition-colors hover:bg-white/10"
-          >
-            Docs
           </a>
         </div>
       </div>
@@ -835,11 +965,20 @@ function SiteFooter() {
     <footer className="border-t border-slate-200 bg-white">
       <div className="mx-auto flex w-full max-w-7xl flex-col items-center justify-between gap-4 px-6 py-7 md:flex-row md:px-10">
         <div className="flex items-center gap-2.5 text-[13.5px] text-slate-600">
-          <img src="/appicon.png" alt="" width={22} height={22} className="h-[22px] w-[22px] rounded-md" />
+          <img
+            src="/appicon.png"
+            alt=""
+            width={22}
+            height={22}
+            className="h-[22px] w-[22px] rounded-md"
+          />
           <span>Answer Readiness</span>
         </div>
 
         <div className="flex flex-wrap items-center justify-center gap-x-7 gap-y-3 text-[13.5px] text-slate-600">
+          <a href="#live" className="transition-colors hover:text-slate-900">
+            Live demo
+          </a>
           <a href="#how" className="transition-colors hover:text-slate-900">
             How it works
           </a>
