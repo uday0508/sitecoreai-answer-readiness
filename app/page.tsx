@@ -215,32 +215,35 @@ function PanelBody() {
         </div>
 
         <div className="mt-4 flex flex-col items-center">
-          <ScoreRing score={77} />
+          <ScoreRing score={68} />
           <div className="mt-2.5 text-center">
             <div className="text-[12px] font-semibold text-amber-600">
               Needs improvement
             </div>
             <div className="mt-0.5 text-[10.5px] text-slate-500">
-              4 issues to fix
+              5 issues to fix
             </div>
           </div>
         </div>
 
         <div className="mt-4 space-y-1.5">
-          <CategoryBar label="STRUCTURE" value={27} max={35} tone="amber" />
-          <CategoryBar label="PASSAGE" value={21} max={25} tone="emerald" />
-          <CategoryBar label="FACTS" value={20} max={20} tone="emerald" />
-          <CategoryBar label="ENTITY" value={5} max={10} tone="red" />
-          <CategoryBar label="FAQ" value={6} max={10} tone="amber" />
+          <CategoryBar label="STRUCTURE" value={22} max={30} tone="amber" />
+          <CategoryBar label="PASSAGE" value={22} max={22} tone="emerald" />
+          <CategoryBar label="FACTS" value={17} max={17} tone="emerald" />
+          <CategoryBar label="ENTITY" value={5} max={9} tone="amber" />
+          <CategoryBar label="FAQ" value={0} max={8} tone="red" />
+          <CategoryBar label="FRESH" value={0} max={8} tone="red" />
+          <CategoryBar label="CITE" value={2} max={6} tone="red" />
         </div>
       </div>
 
       <div className="bg-white p-4">
         <div className="flex flex-wrap items-center gap-1 rounded-lg bg-slate-50 p-0.5">
-          <FilterChip label="All" count={4} active />
+          <FilterChip label="All" count={14} active />
           <FilterChip label="Errors" count={0} tone="red" />
-          <FilterChip label="Warnings" count={4} tone="amber" />
-          <FilterChip label="Passed" count={7} tone="emerald" />
+          <FilterChip label="Warnings" count={5} tone="amber" />
+          <FilterChip label="Info" count={3} tone="slate" />
+          <FilterChip label="Passed" count={6} tone="emerald" />
         </div>
 
         <div className="mt-3.5 space-y-2">
@@ -249,28 +252,30 @@ function PanelBody() {
             title="No question-style headings detected"
             description="Only 0 of 12 headings are phrased as questions."
             recommendation="Rewrite key headings as the questions users ask."
-            impact={6}
+            impact={7}
+            source="heuristic"
           />
           <FindingRow
             severity="warning"
-            title="Opening paragraph is too short"
-            description="Only about 24 words before the first section break."
-            recommendation="Expand the opening to 40–80 words so AI can extract a direct answer."
-            impact={5}
+            title="No FAQ or Q&A structure detected"
+            description="No FAQPage JSON-LD and no question-shaped content in the rendered page."
+            recommendation="Add a FAQ section with 3–5 questions and pair it with FAQPage JSON-LD."
+            impact={8}
+            source="schema-org"
           />
           <FindingRow
             severity="warning"
-            title="Localhost URLs detected in metadata"
-            description="Canonical, OpenGraph, and JSON-LD URLs point to localhost."
-            recommendation="Replace with production HTTPS URLs before publishing."
-            impact={4}
-            evidence="canonical: http://localhost:3000/fnb/energy-drink"
+            title="No last-modified date exposed"
+            description="The page does not publish a dateModified, article:modified_time, or equivalent freshness signal."
+            recommendation="Add a machine-readable last-modified date via article:modified_time or JSON-LD dateModified."
+            impact={8}
+            source="open-graph"
           />
         </div>
 
         <div className="mt-3.5 rounded-lg border border-emerald-100 bg-emerald-50/50 px-3 py-2">
           <div className="text-[9.5px] font-semibold uppercase tracking-wider text-emerald-700">
-            7 passed checks
+            6 passed checks
           </div>
           <div className="mt-1.5 flex flex-wrap gap-1">
             {[
@@ -279,8 +284,7 @@ function PanelBody() {
               "Factual density",
               "Entity defined",
               "Title present",
-              "Meta present",
-              "JSON-LD present",
+              "Scannable structure",
             ].map((t) => (
               <span
                 key={t}
@@ -376,7 +380,7 @@ function FilterChip({
 }: {
   label: string;
   count: number;
-  tone?: "red" | "amber" | "emerald";
+  tone?: "red" | "amber" | "emerald" | "slate";
   active?: boolean;
 }) {
   const chipBg =
@@ -386,6 +390,8 @@ function FilterChip({
       ? "bg-amber-100 text-amber-700"
       : tone === "emerald"
       ? "bg-emerald-100 text-emerald-700"
+      : tone === "slate"
+      ? "bg-slate-200 text-slate-700"
       : "bg-slate-200 text-slate-700";
 
   return (
@@ -411,6 +417,7 @@ function FindingRow({
   recommendation,
   impact,
   evidence,
+  source,
 }: {
   severity: "error" | "warning";
   title: string;
@@ -418,6 +425,7 @@ function FindingRow({
   recommendation: string;
   impact: number;
   evidence?: string;
+  source?: "heuristic" | "open-graph" | "schema-org" | "html-standard";
 }) {
   const dot = severity === "error" ? "bg-red-500" : "bg-amber-500";
   const chip =
@@ -425,13 +433,24 @@ function FindingRow({
       ? "bg-red-50 text-red-700 ring-red-200"
       : "bg-amber-50 text-amber-700 ring-amber-200";
 
+  const sourceLabel: Record<string, string> = {
+    heuristic: "heuristic",
+    "open-graph": "OGP",
+    "schema-org": "schema.org",
+    "html-standard": "HTML",
+  };
+  const sourceChip =
+    source === "heuristic"
+      ? "bg-slate-100 text-slate-500 ring-slate-200"
+      : "bg-blue-50 text-blue-700 ring-blue-200";
+
   return (
     <div className="rounded-lg border border-slate-200 bg-white p-2.5">
       <div className="flex items-start gap-2">
         <span className={`mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full ${dot}`} />
         <div className="min-w-0 flex-1">
-          <div className="flex items-start justify-between gap-3">
-            <div className="text-[12px] font-semibold leading-snug text-slate-900">
+          <div className="flex flex-wrap items-start gap-1.5">
+            <div className="min-w-0 flex-1 text-[12px] font-semibold leading-snug text-slate-900">
               {title}
             </div>
             <span
@@ -439,6 +458,13 @@ function FindingRow({
             >
               Warning
             </span>
+            {source && (
+              <span
+                className={`shrink-0 rounded px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wide ring-1 ring-inset ${sourceChip}`}
+              >
+                {sourceLabel[source]}
+              </span>
+            )}
           </div>
           <p className="mt-0.5 text-[11px] leading-relaxed text-slate-600">
             {description}
@@ -567,7 +593,7 @@ function HowItWorks() {
               "Auto-analyzes when the page changes",
               "Priority list of top fixes",
               "Severity filter with counts",
-              "Copy fix to clipboard",
+              "Source tags: standards-based vs heuristic",
             ]}
             icon={
               <svg
@@ -678,28 +704,44 @@ function ScoreModel() {
   const rows = [
     {
       name: "Answer Structure",
-      weight: 35,
-      checks: "Heading hierarchy, opening paragraphs, question headings, scannable blocks",
+      weight: 30,
+      checks:
+        "Heading hierarchy, opening paragraphs, question-style headings, scannable blocks",
     },
     {
       name: "Passage Integrity",
-      weight: 25,
-      checks: "Self-containment, pronoun density, context-dependent references",
+      weight: 22,
+      checks:
+        "Self-containment, pronoun density, context-dependent references",
     },
     {
       name: "Factual Density",
-      weight: 20,
-      checks: "Numbers, dates, comparisons, concrete claims",
+      weight: 17,
+      checks: "Numbers with units, dates, comparisons, concrete claims",
     },
     {
       name: "Entity Clarity",
-      weight: 10,
-      checks: "Definitions, title alignment, author signals, metadata",
+      weight: 9,
+      checks:
+        "Definitions, title alignment, author signals, metadata hygiene",
     },
     {
       name: "FAQ Readiness",
-      weight: 10,
-      checks: "Question-answer structure, FAQPage schema consistency",
+      weight: 8,
+      checks:
+        "FAQPage schema, visible Q&A content, schema-to-content consistency",
+    },
+    {
+      name: "Freshness",
+      weight: 8,
+      checks:
+        "dateModified, article:modified_time, ISO 8601 format, staleness threshold",
+    },
+    {
+      name: "Citation Signals",
+      weight: 6,
+      checks:
+        "External source links, named attributions, blockquote cite attributes",
     },
   ];
 
@@ -712,11 +754,12 @@ function ScoreModel() {
               Score model
             </div>
             <h2 className="mt-3 text-3xl font-semibold leading-[1.15] tracking-[-0.02em] md:text-4xl">
-              Five weighted categories
+              Seven weighted categories
             </h2>
           </div>
           <p className="max-w-md text-[15px] leading-relaxed text-slate-600 md:text-right">
-            Deterministic, not generative. Same page, same score, every time.
+            Deterministic, not generative. Same page, same score — every
+            finding tagged with the standard or heuristic it came from.
           </p>
         </div>
 
@@ -751,6 +794,20 @@ function ScoreModel() {
                   </td>
                 </tr>
               ))}
+              <tr className="bg-slate-50/70">
+                <td className="px-5 py-4 text-[14.5px] font-semibold text-slate-900 md:px-6">
+                  Total
+                </td>
+                <td className="px-5 py-4 text-right md:px-6">
+                  <span className="rounded-md bg-indigo-100 px-2 py-0.5 text-[13px] font-bold text-indigo-800">
+                    100
+                  </span>
+                </td>
+                <td className="px-5 py-4 text-[13.5px] italic leading-relaxed text-slate-500 md:px-6">
+                  Standards-based detection; editorial scoring disclosed in
+                  the in-app Help panel.
+                </td>
+              </tr>
             </tbody>
           </table>
         </div>
@@ -780,6 +837,10 @@ function Principles() {
     {
       title: "Page Builder native",
       body: "Runs where the marketer works. Same engine everywhere.",
+    },
+    {
+      title: "Disclosed",
+      body: "Findings tagged with the standard they detect against, or labelled heuristic if they are editorial.",
     },
   ];
 
@@ -853,8 +914,8 @@ function Honest() {
             body="Unsaved edits in Page Builder are not reflected until the page is published."
           />
           <LimitRow
-            title="No crawler checks"
-            body="Does not inspect robots.txt, Google-Extended, or content freshness metadata."
+            title="Heuristics are labeled"
+            body="Detectors such as the 12-month staleness threshold and English-only attribution matching are editorial rules, tagged heuristic in the report."
           />
           <LimitRow
             title="No external fact-checking"
@@ -865,8 +926,8 @@ function Honest() {
             body="The scoring engine is deterministic. No LLM is used to produce the score."
           />
           <LimitRow
-            title="No page modifications"
-            body="Reports and suggests. Does not write to your Sitecore content without a supported integration."
+            title="Time-dependent freshness"
+            body="The freshness rule compares against the analysis timestamp, so scores can change as content ages."
           />
         </div>
       </div>
