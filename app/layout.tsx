@@ -2,13 +2,21 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "SitecoreAI Answer Readiness",
-  description: "AEO/GEO and AI answer-readiness analysis for SitecoreAI Page Builder.",
+  title: "Answer Readiness",
+  description:
+    "Deterministic AEO/GEO scoring inside SitecoreAI Page Builder.",
+  icons: {
+    icon: "/appicon.png",
+    shortcut: "/appicon.png",
+    apple: "/appicon.png",
+  },
 };
 
 export default function RootLayout({
   children,
-}: Readonly<{ children: React.ReactNode }>) {
+}: {
+  children: React.ReactNode;
+}) {
   return (
     <html lang="en">
       <body>{children}</body>
