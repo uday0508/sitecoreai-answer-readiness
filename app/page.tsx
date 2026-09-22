@@ -2,7 +2,7 @@ import Link from "next/link";
 import SelfAnalysis from "./SelfAnalysis";
 
 export const metadata = {
-  metadataBase: new URL("https://sitecoreai-answer-readiness.vercel.app"),
+  metadataBase: new URL("https://sitecoreai-answer-readiness.biztechnosys.com"),
   title: "Answer Readiness — Is your Sitecore content ready for AI answers?",
   description:
     "Deterministic AEO/GEO scoring inside SitecoreAI Page Builder. Score every page, see the evidence behind each finding, and fix what AI can't quote.",
@@ -14,7 +14,7 @@ export const metadata = {
   openGraph: {
     title: "Answer Readiness — SitecoreAI Marketplace App",
     description: "Deterministic AEO/GEO scoring inside SitecoreAI Page Builder.",
-    url: "https://sitecoreai-answer-readiness.vercel.app",
+    url: "https://sitecoreai-answer-readiness.biztechnosys.com",
     siteName: "Answer Readiness",
     type: "website",
   },

@@ -8,7 +8,7 @@ export const revalidate = 300;
 
 const ORIGIN =
   process.env.NEXT_PUBLIC_SITE_URL ??
-  "https://sitecoreai-answer-readiness.vercel.app";
+  "https://sitecoreai-answer-readiness.biztechnosys.com";
 
 export async function GET() {
   try {
