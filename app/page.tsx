@@ -1,878 +1,800 @@
-import Link from "next/link";
-import SelfAnalysis from "./SelfAnalysis";
+'use client';
 
-export const metadata = {
-  metadataBase: new URL("https://sitecoreai-answer-readiness.biztechnosys.com"),
-  title: "Answer Readiness — Is your Sitecore content ready for AI answers?",
-  description:
-    "Deterministic AEO/GEO scoring inside SitecoreAI Page Builder. Score every page, see the evidence behind each finding, and fix what AI can't quote.",
-  icons: {
-    icon: "/appicon.png",
-    shortcut: "/appicon.png",
-    apple: "/appicon.png",
-  },
-  openGraph: {
-    title: "Answer Readiness — SitecoreAI Marketplace App",
-    description: "Deterministic AEO/GEO scoring inside SitecoreAI Page Builder.",
-    url: "https://sitecoreai-answer-readiness.biztechnosys.com",
-    siteName: "Answer Readiness",
-    type: "website",
-  },
-};
+import Link from 'next/link';
+import { useEffect, useState } from 'react';
+import SelfAnalysis from './SelfAnalysis';
 
 const MARKETPLACE_URL =
-  "https://portal.sitecorecloud.io/marketplace/details?id=pub-35343dea-8835-4c7d-9f51-02ac96d4dc42";
+  'https://portal.sitecorecloud.io/marketplace/details?id=pub-35343dea-8835-4c7d-9f51-02ac96d4dc42';
 
-export default function Home() {
+const RIBBON = [
+  'DETERMINISTIC',
+  'NO LLM',
+  'STANDARDS-BASED',
+  'EVIDENCE-FIRST',
+  'PAGE BUILDER NATIVE',
+  'SEVEN CATEGORIES',
+  'SOURCE-TAGGED',
+  'PUBLISHED HTML ONLY',
+];
+
+const SCORE_ROWS = [
+  { n: '01', name: 'Answer Structure', weight: 30, checks: 'Heading hierarchy, opening paragraphs, question-style headings, scannable blocks', source: 'heuristic' },
+  { n: '02', name: 'Passage Integrity', weight: 22, checks: 'Self-containment, pronoun density, context-dependent references', source: 'heuristic' },
+  { n: '03', name: 'Factual Density', weight: 17, checks: 'Numbers with units, dates, comparisons, concrete claims', source: 'heuristic' },
+  { n: '04', name: 'Entity Clarity', weight: 9, checks: 'Definitions, title alignment, author signals, metadata hygiene', source: 'heuristic' },
+  { n: '05', name: 'FAQ Readiness', weight: 8, checks: 'FAQPage schema, visible Q&A content, schema-to-content consistency', source: 'schema.org' },
+  { n: '06', name: 'Freshness', weight: 8, checks: 'dateModified, article:modified_time, ISO 8601 format, staleness threshold', source: 'ogp' },
+  { n: '07', name: 'Citation Signals', weight: 6, checks: 'External source links, named attributions, blockquote cite attributes', source: 'html' },
+];
+
+const MANIFESTO = [
+  { n: '01', title: 'Deterministic', body: 'No model produces the score. Auditable. Reproducible. Same page, same number, every time.' },
+  { n: '02', title: 'Evidence-first', body: 'Every finding carries the exact sample that triggered it. Heading text. Paragraph excerpt. Missing property.' },
+  { n: '03', title: 'Disclosed', body: 'Findings backed by a published standard say so. Editorial rules say "heuristic." The user is never misled.' },
+  { n: '04', title: 'Page Builder native', body: 'Runs where the marketer works. Same engine as the site-wide view. No second system to trust.' },
+  { n: '05', title: 'Honest about limits', body: 'Not a ranking score. Not a citation guarantee. Published HTML only. No LLM in the pipeline.' },
+];
+
+const FAQ_ITEMS = [
+  { q: 'Does this replace my SEO tools?', a: 'No. SEO tools measure ranking position. This measures whether AI answer engines can extract passages and cite your page. Both signals matter — they just answer different questions.' },
+  { q: 'Does it use an LLM to produce the score?', a: 'No. The engine is a deterministic rule pipeline. No LLM, classifier, or trained model is used. Re-running the same published HTML against the same analysis timestamp and policy produces the same score.' },
+  { q: 'What is the difference between a "standard" and a "heuristic"?', a: 'Standards-based findings parse published specs — Open Graph Protocol, schema.org, HTML Living Standard, Google crawler docs. Heuristic findings use editorial rules we chose. Both appear in the report, and every finding is tagged with its source.' },
+  { q: 'Does it modify my content?', a: 'No. The app reads published HTML and produces findings. It does not write to Sitecore content. Rewrites are shown as before/after suggestions in the panel — you decide what to apply.' },
+  { q: 'Why does my starter kit score 0 on Freshness?', a: 'Because the Sitecore starter kit does not publish a dateModified or article:modified_time on page templates. Adding one meta tag to your layout fixes it across every page.' },
+  { q: 'Can I score drafts before publishing?', a: 'The engine analyzes published HTML. Unsaved edits in Page Builder are not reflected until you publish. This is deliberate — it ensures what AI crawlers actually see is what gets scored.' },
+];
+
+const NAV = [
+  { id: 'hero', label: 'Intro' },
+  { id: 'live', label: 'Live' },
+  { id: 'problem', label: 'Problem' },
+  { id: 'surfaces', label: 'Surfaces' },
+  { id: 'model', label: 'Model' },
+  { id: 'manifesto', label: 'Manifesto' },
+  { id: 'faq', label: 'FAQ' },
+];
+
+const FONT_MONTSERRAT = "'Montserrat', ui-sans-serif, system-ui, sans-serif";
+const FONT_ORBITRON = "'Orbitron', ui-monospace, monospace";
+
+const BRAND = {
+  accent: '#F79533',
+  accentHover: '#E88A2E',
+  accentTint: '#FFF7ED',
+  accentTintBorder: '#FED7AA',
+  pageBg: '#FAFAFA',
+  panelBg: '#FFFFFF',
+  warmPanel: '#F4F4F0',
+  border: '#E5E5E5',
+  borderStrong: '#D0D0D0',
+  textPrimary: '#0F0F0F',
+  textSecondary: '#525252',
+  textMuted: '#A1A1AA',
+  dark: '#141414',
+};
+
+function ArrowIcon({ className = 'h-4 w-4' }: { className?: string }) {
   return (
-    <div className="min-h-screen bg-white text-slate-900 antialiased">
-      <SiteHeader />
-      <Hero />
-      <SelfAnalysisSection />
-      <Problem />
-      <HowItWorks />
-      <ScoreModel />
-      <Principles />
-      <Honest />
-      <CTA />
-      <SiteFooter />
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true">
+      <path d="M5 12h14" />
+      <path d="m13 6 6 6-6 6" />
+    </svg>
+  );
+}
+
+function SourceTag({ source }: { source: string }) {
+  const map: Record<string, { label: string; tone: string }> = {
+    heuristic: { label: 'HEURISTIC', tone: BRAND.textMuted },
+    'schema.org': { label: 'SCHEMA.ORG', tone: BRAND.accent },
+    ogp: { label: 'OGP', tone: BRAND.accent },
+    html: { label: 'HTML', tone: BRAND.accent },
+  };
+  const s = map[source] ?? map.heuristic;
+  return (
+    <span
+      className="text-[10px] font-semibold uppercase tracking-[0.15em]"
+      style={{ fontFamily: FONT_ORBITRON, color: s.tone }}
+    >
+      {s.label}
+    </span>
+  );
+}
+
+function ScoreDial({ score, size = 200 }: { score: number; size?: number }) {
+  const stroke = 6;
+  const r = (size - stroke * 2) / 2;
+  const c = 2 * Math.PI * r;
+  const offset = c - (score / 100) * c;
+  const color = score >= 80 ? '#10b981' : score >= 60 ? BRAND.accent : '#ef4444';
+
+  return (
+    <div className="relative" style={{ width: `${size}px`, height: `${size}px` }}>
+      <svg viewBox={`0 0 ${size} ${size}`} className="h-full w-full -rotate-90">
+        <circle
+          cx={size / 2}
+          cy={size / 2}
+          r={r}
+          fill="none"
+          stroke={BRAND.border}
+          strokeWidth={stroke}
+        />
+        <circle
+          cx={size / 2}
+          cy={size / 2}
+          r={r}
+          fill="none"
+          stroke={color}
+          strokeWidth={stroke}
+          strokeLinecap="round"
+          strokeDasharray={c}
+          strokeDashoffset={offset}
+        />
+      </svg>
+      <div className="absolute inset-0 flex flex-col items-center justify-center">
+        <span
+          className="text-[42px] font-semibold leading-none tracking-tight tabular-nums"
+          style={{ color: BRAND.textPrimary }}
+        >
+          {score}
+        </span>
+        <span
+          className="mt-1 text-[10px] font-semibold tracking-[0.15em]"
+          style={{ fontFamily: FONT_ORBITRON, color: BRAND.textMuted }}
+        >
+          OUT OF 100
+        </span>
+      </div>
     </div>
   );
 }
 
-/* ─────────────────────────────────────────────────────────────────
-   HEADER
-   ───────────────────────────────────────────────────────────────── */
+export default function InteractiveHome() {
+  const [mounted, setMounted] = useState(false);
+  const [activeSection, setActiveSection] = useState('hero');
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
 
-function SiteHeader() {
+  useEffect(() => setMounted(true), []);
+
+  useEffect(() => {
+    const id = 'ar-fonts';
+    if (document.getElementById(id)) return;
+    const link = document.createElement('link');
+    link.id = id;
+    link.rel = 'stylesheet';
+    link.href =
+      'https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700&family=Orbitron:wght@500;600;700&display=swap';
+    document.head.appendChild(link);
+  }, []);
+
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((e) => {
+          if (e.isIntersecting) setActiveSection(e.target.id);
+        });
+      },
+      { rootMargin: '-40% 0px -55% 0px' }
+    );
+    NAV.forEach((n) => {
+      const el = document.getElementById(n.id);
+      if (el) observer.observe(el);
+    });
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement;
+      if (target?.tagName === 'INPUT' || target?.tagName === 'TEXTAREA') return;
+      if (e.key === '?') {
+        e.preventDefault();
+        setShortcutsOpen((v) => !v);
+      } else if (e.key === 'Escape') {
+        setShortcutsOpen(false);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
   return (
-    <header className="sticky top-0 z-50 border-b border-slate-200/70 bg-white/80 backdrop-blur-xl">
-      <div className="mx-auto flex w-full max-w-7xl items-center justify-between px-6 py-3 md:px-10">
-        <Link href="/" className="flex items-center gap-2.5">
+    <div
+      className="min-h-screen antialiased"
+      style={{ background: BRAND.pageBg, color: BRAND.textPrimary, fontFamily: FONT_MONTSERRAT }}
+    >
+      <TopBar />
+      {mounted && <SideRail active={activeSection} />}
+      <main className="lg:pl-24">
+        <Hero />
+        <DiagonalRibbon />
+        <LiveSection />
+        <ProblemSection />
+        <SurfacesSection />
+        <ModelSection />
+        <ManifestoSection />
+        <FaqSection />
+        <Finale />
+        <Footer />
+      </main>
+
+      {shortcutsOpen && <ShortcutsOverlay onClose={() => setShortcutsOpen(false)} />}
+      {mounted && <BackToTop />}
+
+      <style>{`
+        @keyframes marquee {
+          from { transform: translateX(0); }
+          to { transform: translateX(-50%); }
+        }
+      `}</style>
+    </div>
+  );
+}
+
+/* ─────────────────────────────────────────────────────────────
+   CHROME
+   ───────────────────────────────────────────────────────────── */
+
+function TopBar() {
+  return (
+    <header
+      className="fixed left-0 right-0 top-0 z-40 border-b backdrop-blur-xl"
+      style={{ borderColor: BRAND.border, background: 'rgba(250, 250, 250, 0.95)' }}
+    >
+      <div className="flex h-14 items-center justify-between px-6 lg:pl-28 lg:pr-10">
+        <Link href="/" className="group flex items-center gap-3">
           <img
             src="/appicon.png"
             alt=""
-            width={26}
-            height={26}
-            className="h-[26px] w-[26px] rounded-lg"
+            width={28}
+            height={28}
+            className="h-7 w-7 rounded-md ring-1 transition-transform duration-500 group-hover:rotate-[8deg]"
+            style={{ boxShadow: `0 0 0 1px ${BRAND.border}` }}
           />
-          <span className="text-[14.5px] font-semibold tracking-tight">
+          <span
+            className="text-[13px] font-semibold uppercase tracking-[0.2em]"
+            style={{ fontFamily: FONT_ORBITRON, color: BRAND.textPrimary }}
+          >
             Answer Readiness
           </span>
         </Link>
 
-        <nav className="hidden items-center gap-7 text-[13.5px] font-medium text-slate-600 md:flex">
-          <a href="#live" className="transition-colors hover:text-slate-900">
-            Live demo
+        <div className="flex items-center gap-4">
+          <span
+            className="hidden text-[10px] font-semibold uppercase tracking-[0.2em] md:inline"
+            style={{ fontFamily: FONT_ORBITRON, color: BRAND.textMuted }}
+          >
+            v1.0
+          </span>
+          <span className="hidden h-4 w-px md:inline-block" style={{ background: BRAND.border }} />
+          <a
+            href={MARKETPLACE_URL}
+            className="group inline-flex items-center gap-2 rounded-md border px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.15em] transition-all"
+            style={{
+              fontFamily: FONT_ORBITRON,
+              borderColor: BRAND.accentTintBorder,
+              background: BRAND.accentTint,
+              color: BRAND.accentHover,
+            }}
+          >
+            Install
+            <ArrowIcon className="h-3 w-3 transition-transform group-hover:translate-x-0.5" />
           </a>
-          <a href="#how" className="transition-colors hover:text-slate-900">
-            How it works
-          </a>
-          <a href="#score" className="transition-colors hover:text-slate-900">
-            Score model
-          </a>
-          <a href="#limits" className="transition-colors hover:text-slate-900">
-            Limitations
-          </a>
-        </nav>
-
-        <a
-          href={MARKETPLACE_URL}
-          className="rounded-lg bg-slate-900 px-3.5 py-1.5 text-[12.5px] font-semibold text-white shadow-sm transition-all hover:bg-slate-800"
-        >
-          Install
-        </a>
+        </div>
       </div>
     </header>
   );
 }
 
-/* ─────────────────────────────────────────────────────────────────
+function SideRail({ active }: { active: string }) {
+  return (
+    <>
+      <style>{`
+        .rail-item .rail-tick {
+          width: 20px;
+          background: ${BRAND.borderStrong};
+          transition: width 500ms ease, background 300ms ease;
+        }
+        .rail-item .rail-label {
+          color: ${BRAND.textSecondary};
+          transition: color 300ms ease;
+        }
+        .rail-item:hover .rail-tick {
+          width: 40px;
+          background: ${BRAND.accent};
+        }
+        .rail-item:hover .rail-label {
+          color: ${BRAND.accentHover};
+        }
+        .rail-item.active .rail-tick {
+          width: 40px;
+          background: ${BRAND.accent};
+        }
+        .rail-item.active .rail-label {
+          color: ${BRAND.accentHover};
+        }
+        .rail-keys .rail-keys-box {
+          transition: border-color 300ms ease, color 300ms ease;
+        }
+        .rail-keys .rail-keys-label {
+          transition: color 300ms ease;
+        }
+        .rail-keys:hover .rail-keys-box {
+          border-color: ${BRAND.accent};
+          color: ${BRAND.accentHover};
+        }
+        .rail-keys:hover .rail-keys-label {
+          color: ${BRAND.accentHover};
+        }
+      `}</style>
+
+      <aside
+        className="fixed bottom-0 left-0 top-14 z-30 hidden w-24 flex-col items-center justify-between border-r py-6 backdrop-blur-xl lg:flex"
+        style={{ borderColor: BRAND.border, background: 'rgba(250, 250, 250, 0.8)' }}
+      >
+        <div className="flex flex-col gap-6">
+          {NAV.map((n) => (
+            <a
+              key={n.id}
+              href={`#${n.id}`}
+              className={`rail-item flex flex-col items-center gap-2 ${active === n.id ? 'active' : ''}`}
+            >
+              <span className="rail-tick h-px" />
+              <span
+                className="rail-label text-[10px] font-semibold uppercase tracking-[0.15em]"
+                style={{ fontFamily: FONT_ORBITRON }}
+              >
+                {n.label}
+              </span>
+            </a>
+          ))}
+        </div>
+
+        <button
+          type="button"
+          onClick={() => window.dispatchEvent(new KeyboardEvent('keydown', { key: '?' }))}
+          className="rail-keys group flex flex-col items-center gap-2"
+          aria-label="Show keyboard shortcuts"
+        >
+          <span
+            className="rail-keys-box flex h-7 w-7 items-center justify-center rounded-md border text-[12px] font-semibold"
+            style={{
+              fontFamily: FONT_ORBITRON,
+              borderColor: BRAND.border,
+              background: BRAND.panelBg,
+              color: BRAND.textSecondary,
+            }}
+          >
+            ?
+          </span>
+          <span
+            className="rail-keys-label text-[10px] font-semibold uppercase tracking-[0.15em]"
+            style={{ fontFamily: FONT_ORBITRON, color: BRAND.textSecondary }}
+          >
+            Keys
+          </span>
+        </button>
+      </aside>
+    </>
+  );
+}
+
+function BackToTop() {
+  const [visible, setVisible] = useState(false);
+
+  useEffect(() => {
+    const onScroll = () => setVisible(window.scrollY > 600);
+    window.addEventListener('scroll', onScroll, { passive: true });
+    onScroll();
+    return () => window.removeEventListener('scroll', onScroll);
+  }, []);
+
+  return (
+    <button
+      type="button"
+      onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+      aria-label="Back to top"
+      className="fixed bottom-6 right-6 z-40 flex h-11 w-11 items-center justify-center rounded-md border"
+      style={{
+        borderColor: BRAND.border,
+        background: BRAND.panelBg,
+        color: BRAND.textPrimary,
+        opacity: visible ? 1 : 0,
+        pointerEvents: visible ? 'auto' : 'none',
+        transform: visible ? 'translateY(0)' : 'translateY(8px)',
+        boxShadow: visible ? '0 8px 24px -8px rgba(15,15,15,0.18)' : 'none',
+        transition: 'opacity 300ms ease, transform 300ms ease, box-shadow 300ms ease',
+      }}
+    >
+      <svg
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        className="h-4 w-4"
+        aria-hidden="true"
+      >
+        <path d="M12 19V5" />
+        <path d="m5 12 7-7 7 7" />
+      </svg>
+    </button>
+  );
+}
+
+/* ─────────────────────────────────────────────────────────────
    HERO
-   ───────────────────────────────────────────────────────────────── */
+   ───────────────────────────────────────────────────────────── */
 
 function Hero() {
   return (
-    <section className="relative overflow-hidden border-b border-slate-200">
-      <div aria-hidden className="pointer-events-none absolute inset-0 -z-10">
-        <div className="absolute left-1/2 top-[-200px] h-[600px] w-[1100px] -translate-x-1/2 rounded-full bg-gradient-to-b from-indigo-100/70 via-indigo-50/40 to-transparent blur-3xl" />
-        <div
-          className="absolute inset-0 opacity-40"
-          style={{
-            backgroundImage:
-              "linear-gradient(to right, rgb(226 232 240 / 0.7) 1px, transparent 1px), linear-gradient(to bottom, rgb(226 232 240 / 0.7) 1px, transparent 1px)",
-            backgroundSize: "48px 48px",
-            maskImage:
-              "radial-gradient(ellipse 70% 60% at 50% 20%, black, transparent 75%)",
-            WebkitMaskImage:
-              "radial-gradient(ellipse 70% 60% at 50% 20%, black, transparent 75%)",
-          }}
-        />
-      </div>
+    <section id="hero" className="relative min-h-[88vh] overflow-hidden pt-14">
+      <div
+        aria-hidden
+        className="absolute inset-0 opacity-[0.4]"
+        style={{
+          backgroundImage: `linear-gradient(to right, ${BRAND.border} 1px, transparent 1px), linear-gradient(to bottom, ${BRAND.border} 1px, transparent 1px)`,
+          backgroundSize: '80px 80px',
+        }}
+      />
+      <div
+        aria-hidden
+        className="absolute inset-0"
+        style={{ background: `radial-gradient(ellipse 50% 60% at 30% 40%, ${BRAND.accentTint}, transparent 60%)` }}
+      />
 
-      <div className="mx-auto w-full max-w-6xl px-6 pt-14 md:px-10 md:pt-20">
-        <div className="mx-auto max-w-3xl text-center">
-          <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1 text-[12px] font-medium text-slate-600 shadow-sm">
-            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-            SitecoreAI Marketplace App
+      <div className="relative mx-auto max-w-[1400px] px-6 py-16 lg:px-16 lg:py-20">
+        <div className="grid grid-cols-12 gap-8">
+          <div className="col-span-12 lg:col-span-7">
+            <div className="flex items-center gap-3">
+              <span className="h-2 w-2 rounded-full" style={{ background: '#10b981' }} />
+              <span
+                className="text-[11px] font-semibold uppercase tracking-[0.25em]"
+                style={{ fontFamily: FONT_ORBITRON, color: BRAND.textSecondary }}
+              >
+                Live on Sitecore Marketplace
+              </span>
+            </div>
+
+            <h1
+              className="mt-8 text-[56px] font-light leading-[0.98] tracking-[-0.04em] sm:text-[80px] lg:text-[92px]"
+              style={{ color: BRAND.textPrimary }}
+            >
+              Ready for
+              <br />
+              <span className="font-semibold" style={{ color: BRAND.accent }}>
+                AI answers
+              </span>
+            </h1>
+
+            <p className="mt-8 max-w-lg text-[17px] leading-relaxed" style={{ color: BRAND.textSecondary }}>
+              AI answer engines extract passages, not pages. Score every
+              Sitecore page against the signals that decide whether AI can
+              cite it.
+            </p>
+
+            <div className="mt-10 flex flex-wrap items-center gap-4">
+              <a
+                href={MARKETPLACE_URL}
+                className="group inline-flex h-12 items-center gap-3 rounded-md px-6 text-[12px] font-semibold uppercase tracking-[0.15em] text-white transition-all hover:-translate-y-px"
+                style={{ fontFamily: FONT_ORBITRON, background: BRAND.dark }}
+              >
+                Install
+                <ArrowIcon className="h-3.5 w-3.5 transition-transform group-hover:translate-x-1" />
+              </a>
+              <a
+                href="#live"
+                className="group inline-flex h-12 items-center gap-3 rounded-md border bg-white px-6 text-[12px] font-semibold uppercase tracking-[0.15em] transition-all hover:-translate-y-px"
+                style={{ fontFamily: FONT_ORBITRON, borderColor: BRAND.border, color: BRAND.textPrimary }}
+              >
+                Live Demo
+                <ArrowIcon className="h-3.5 w-3.5 transition-transform group-hover:translate-x-1" />
+              </a>
+            </div>
+
+            <div
+              className="mt-12 grid grid-cols-2 gap-x-10 gap-y-4 border-t pt-6 sm:grid-cols-4"
+              style={{ borderColor: BRAND.border }}
+            >
+              {[
+                { l: 'Categories', v: '7' },
+                { l: 'Scale', v: '100' },
+                { l: 'LLMs', v: '0' },
+                { l: 'Surfaces', v: '2' },
+              ].map((s) => (
+                <div key={s.l}>
+                  <div
+                    className="text-[10px] font-semibold uppercase tracking-[0.2em]"
+                    style={{ fontFamily: FONT_ORBITRON, color: BRAND.textMuted }}
+                  >
+                    {s.l}
+                  </div>
+                  <div className="mt-2 text-[28px] font-light tabular-nums" style={{ color: BRAND.textPrimary }}>
+                    {s.v}
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
 
-          <h1 className="mt-6 text-4xl font-semibold leading-[1.05] tracking-[-0.03em] text-slate-900 md:text-[56px]">
-            Is your Sitecore content
-            <br />
-            ready for AI answers?
-          </h1>
-
-          <p className="mx-auto mt-5 max-w-xl text-[17px] leading-relaxed text-slate-600">
-            AI answer engines extract passages, not pages. Score every page
-            against the signals that decide whether AI can cite it.
-          </p>
-
-          <div className="mt-7 flex flex-wrap items-center justify-center gap-3">
-            <a
-              href={MARKETPLACE_URL}
-              className="group inline-flex items-center gap-2 rounded-xl bg-slate-900 px-5 py-2.5 text-[14px] font-semibold text-white shadow-sm transition-all hover:bg-slate-800 hover:shadow-md"
-            >
-              Install from Marketplace
-              <svg
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2.5"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5"
-              >
-                <path d="M5 12h14" />
-                <path d="m12 5 7 7-7 7" />
-              </svg>
-            </a>
-            <a
-              href="#live"
-              className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-5 py-2.5 text-[14px] font-semibold text-slate-700 shadow-sm transition-all hover:border-slate-300 hover:bg-slate-50"
-            >
-              See the live demo
-            </a>
+          <div className="col-span-12 flex items-center justify-center lg:col-span-5 lg:justify-end">
+            <div className="relative">
+              <div
+                aria-hidden
+                className="absolute inset-0 -z-10 rounded-full blur-3xl"
+                style={{ background: BRAND.accentTint }}
+              />
+              <ScoreDial score={68} size={280} />
+              <div className="mt-6 text-center lg:text-right">
+                <div
+                  className="text-[11px] font-semibold uppercase tracking-[0.25em]"
+                  style={{ fontFamily: FONT_ORBITRON, color: BRAND.accentHover }}
+                >
+                  Needs Improvement
+                </div>
+                <div className="mt-2 text-[14px]" style={{ color: BRAND.textSecondary }}>
+                  5 issues to fix on this page
+                </div>
+              </div>
+            </div>
           </div>
         </div>
+      </div>
 
-        <div className="relative mx-auto mt-12 max-w-5xl translate-y-px">
-          <div className="overflow-hidden rounded-t-2xl border border-b-0 border-slate-200 bg-white shadow-[0_20px_50px_-24px_rgba(15,23,42,0.3)]">
-            <PanelChrome />
-            <PanelBody />
-          </div>
+      <div className="absolute bottom-6 left-6 right-6 flex items-center justify-between lg:left-16 lg:right-16">
+        <span
+          className="text-[10px] font-semibold uppercase tracking-[0.25em]"
+          style={{ fontFamily: FONT_ORBITRON, color: BRAND.textMuted }}
+        >
+          Scroll
+        </span>
+        <span
+          className="text-[10px] font-semibold uppercase tracking-[0.25em]"
+          style={{ fontFamily: FONT_ORBITRON, color: BRAND.textMuted }}
+        >
+          Press{' '}
+          <kbd
+            className="ml-1 rounded border bg-white px-1.5 py-0.5"
+            style={{ borderColor: BRAND.border, fontFamily: FONT_ORBITRON, color: BRAND.textSecondary }}
+          >
+            ?
+          </kbd>{' '}
+          for keys
+        </span>
+      </div>
+    </section>
+  );
+}
+
+/* ─────────────────────────────────────────────────────────────
+   MARQUEE RIBBON
+   ───────────────────────────────────────────────────────────── */
+
+function DiagonalRibbon() {
+  return (
+    <section
+      className="relative overflow-hidden border-y"
+      style={{ borderColor: BRAND.border, background: BRAND.panelBg }}
+    >
+      <div className="flex py-4">
+        <div
+          className="flex w-max gap-12 whitespace-nowrap pr-12"
+          style={{ animation: 'marquee 40s linear infinite' }}
+        >
+          {[...RIBBON, ...RIBBON].map((item, i) => (
+            <span
+              key={i}
+              className="flex items-center gap-4 text-[12px] font-semibold uppercase tracking-[0.25em]"
+              style={{ fontFamily: FONT_ORBITRON, color: BRAND.textSecondary }}
+            >
+              <span className="h-1.5 w-1.5 rotate-45" style={{ background: BRAND.accent }} />
+              {item}
+            </span>
+          ))}
         </div>
       </div>
     </section>
   );
 }
 
-function PanelChrome() {
+/* ─────────────────────────────────────────────────────────────
+   LIVE
+   ───────────────────────────────────────────────────────────── */
+
+function LiveSection() {
   return (
-    <div className="flex items-center gap-2 border-b border-slate-200 bg-slate-50/80 px-3.5 py-2">
-      <span className="h-2.5 w-2.5 rounded-full bg-red-400/70" />
-      <span className="h-2.5 w-2.5 rounded-full bg-amber-400/70" />
-      <span className="h-2.5 w-2.5 rounded-full bg-emerald-400/70" />
-      <div className="ml-3 flex flex-1 items-center gap-2 rounded-md border border-slate-200 bg-white px-2.5 py-1">
-        <svg
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          className="h-3 w-3 text-slate-400"
-        >
-          <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
-          <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-        </svg>
-        <span className="truncate font-mono text-[10.5px] text-slate-500">
-          app.sitecorecloud.io/pages-contextpanel
-        </span>
-      </div>
-    </div>
-  );
-}
-
-function PanelBody() {
-  return (
-    <div className="grid grid-cols-1 md:grid-cols-[240px_1fr]">
-      <div className="border-b border-slate-200 bg-white p-3.5 md:border-b-0 md:border-r">
-        <div className="flex items-center gap-1.5">
-          <span className="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[9.5px] font-medium text-slate-600">
-            AEO / GEO
-          </span>
-        </div>
-
-        <div className="mt-3 text-[9.5px] font-semibold uppercase tracking-wider text-slate-500">
-          Current page
-        </div>
-        <div className="mt-0.5 truncate text-[12px] font-semibold text-slate-900">
-          VitaFlow Energy Drink
-        </div>
-        <div className="mt-0.5 truncate text-[10px] text-slate-500">
-          /sitecore/content/.../FNB/VitaFlow Energy Drink
-        </div>
-
-        <div className="mt-4 flex flex-col items-center">
-          <ScoreRing score={68} />
-          <div className="mt-2.5 text-center">
-            <div className="text-[12px] font-semibold text-amber-600">
-              Needs improvement
-            </div>
-            <div className="mt-0.5 text-[10.5px] text-slate-500">
-              5 issues to fix
-            </div>
-          </div>
-        </div>
-
-        <div className="mt-4 space-y-1.5">
-          <CategoryBar label="STRUCTURE" value={22} max={30} tone="amber" />
-          <CategoryBar label="PASSAGE" value={22} max={22} tone="emerald" />
-          <CategoryBar label="FACTS" value={17} max={17} tone="emerald" />
-          <CategoryBar label="ENTITY" value={5} max={9} tone="amber" />
-          <CategoryBar label="FAQ" value={0} max={8} tone="red" />
-          <CategoryBar label="FRESH" value={0} max={8} tone="red" />
-          <CategoryBar label="CITE" value={2} max={6} tone="red" />
-        </div>
-      </div>
-
-      <div className="bg-white p-4">
-        <div className="flex flex-wrap items-center gap-1 rounded-lg bg-slate-50 p-0.5">
-          <FilterChip label="All" count={14} active />
-          <FilterChip label="Errors" count={0} tone="red" />
-          <FilterChip label="Warnings" count={5} tone="amber" />
-          <FilterChip label="Info" count={3} tone="slate" />
-          <FilterChip label="Passed" count={6} tone="emerald" />
-        </div>
-
-        <div className="mt-3.5 space-y-2">
-          <FindingRow
-            severity="warning"
-            title="No question-style headings detected"
-            description="Only 0 of 12 headings are phrased as questions."
-            recommendation="Rewrite key headings as the questions users ask."
-            impact={7}
-            source="heuristic"
-          />
-          <FindingRow
-            severity="warning"
-            title="No FAQ or Q&A structure detected"
-            description="No FAQPage JSON-LD and no question-shaped content in the rendered page."
-            recommendation="Add a FAQ section with 3–5 questions and pair it with FAQPage JSON-LD."
-            impact={8}
-            source="schema-org"
-          />
-          <FindingRow
-            severity="warning"
-            title="No last-modified date exposed"
-            description="The page does not publish a dateModified, article:modified_time, or equivalent freshness signal."
-            recommendation="Add a machine-readable last-modified date via article:modified_time or JSON-LD dateModified."
-            impact={8}
-            source="open-graph"
-          />
-        </div>
-
-        <div className="mt-3.5 rounded-lg border border-emerald-100 bg-emerald-50/50 px-3 py-2">
-          <div className="text-[9.5px] font-semibold uppercase tracking-wider text-emerald-700">
-            6 passed checks
-          </div>
-          <div className="mt-1.5 flex flex-wrap gap-1">
-            {[
-              "Answer-first paragraph",
-              "Self-contained passages",
-              "Factual density",
-              "Entity defined",
-              "Title present",
-              "Scannable structure",
-            ].map((t) => (
-              <span
-                key={t}
-                className="rounded-md bg-white px-1.5 py-0.5 text-[10px] font-medium text-emerald-800 ring-1 ring-inset ring-emerald-200"
-              >
-                {t}
-              </span>
-            ))}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function ScoreRing({ score }: { score: number }) {
-  const radius = 28;
-  const circumference = 2 * Math.PI * radius;
-  const offset = circumference - (score / 100) * circumference;
-  const stroke = score >= 80 ? "#059669" : score >= 60 ? "#d97706" : "#dc2626";
-
-  return (
-    <div className="relative h-[68px] w-[68px]">
-      <svg viewBox="0 0 68 68" className="h-full w-full -rotate-90">
-        <circle cx="34" cy="34" r={radius} fill="none" stroke="#e2e8f0" strokeWidth="5" />
-        <circle
-          cx="34"
-          cy="34"
-          r={radius}
-          fill="none"
-          stroke={stroke}
-          strokeWidth="5"
-          strokeLinecap="round"
-          strokeDasharray={circumference}
-          strokeDashoffset={offset}
-        />
-      </svg>
-      <div className="absolute inset-0 flex flex-col items-center justify-center">
-        <span className="text-[17px] font-bold leading-none text-slate-900">
-          {score}
-        </span>
-        <span className="mt-0.5 text-[9px] font-medium text-slate-400">/100</span>
-      </div>
-    </div>
-  );
-}
-
-function CategoryBar({
-  label,
-  value,
-  max,
-  tone,
-}: {
-  label: string;
-  value: number;
-  max: number;
-  tone: "emerald" | "amber" | "red";
-}) {
-  const pct = Math.round((value / max) * 100);
-  const color =
-    tone === "emerald"
-      ? "bg-emerald-500"
-      : tone === "amber"
-      ? "bg-amber-500"
-      : "bg-red-500";
-  const labelColor =
-    tone === "emerald"
-      ? "text-emerald-700"
-      : tone === "amber"
-      ? "text-amber-700"
-      : "text-red-700";
-
-  return (
-    <div>
-      <div className="flex items-center justify-between text-[9px] font-semibold uppercase tracking-wider">
-        <span className={labelColor}>{label}</span>
-        <span className="text-slate-500">
-          {value}/{max}
-        </span>
-      </div>
-      <div className="mt-1 h-1 w-full overflow-hidden rounded-full bg-slate-100">
-        <div className={`h-full rounded-full ${color}`} style={{ width: `${pct}%` }} />
-      </div>
-    </div>
-  );
-}
-
-function FilterChip({
-  label,
-  count,
-  tone,
-  active,
-}: {
-  label: string;
-  count: number;
-  tone?: "red" | "amber" | "emerald" | "slate";
-  active?: boolean;
-}) {
-  const chipBg =
-    tone === "red"
-      ? "bg-red-100 text-red-700"
-      : tone === "amber"
-      ? "bg-amber-100 text-amber-700"
-      : tone === "emerald"
-      ? "bg-emerald-100 text-emerald-700"
-      : tone === "slate"
-      ? "bg-slate-200 text-slate-700"
-      : "bg-slate-200 text-slate-700";
-
-  return (
-    <div
-      className={`flex flex-1 items-center justify-center gap-1 rounded-md px-2 py-0.5 text-[10.5px] font-semibold ${
-        active
-          ? "bg-white text-slate-900 shadow-sm ring-1 ring-inset ring-slate-200"
-          : "text-slate-500"
-      }`}
-    >
-      <span>{label}</span>
-      <span className={`rounded-full px-1 text-[9px] font-bold ${chipBg}`}>
-        {count}
-      </span>
-    </div>
-  );
-}
-
-function FindingRow({
-  severity,
-  title,
-  description,
-  recommendation,
-  impact,
-  evidence,
-  source,
-}: {
-  severity: "error" | "warning";
-  title: string;
-  description: string;
-  recommendation: string;
-  impact: number;
-  evidence?: string;
-  source?: "heuristic" | "open-graph" | "schema-org" | "html-standard";
-}) {
-  const dot = severity === "error" ? "bg-red-500" : "bg-amber-500";
-  const chip =
-    severity === "error"
-      ? "bg-red-50 text-red-700 ring-red-200"
-      : "bg-amber-50 text-amber-700 ring-amber-200";
-
-  const sourceLabel: Record<string, string> = {
-    heuristic: "heuristic",
-    "open-graph": "OGP",
-    "schema-org": "schema.org",
-    "html-standard": "HTML",
-  };
-  const sourceChip =
-    source === "heuristic"
-      ? "bg-slate-100 text-slate-500 ring-slate-200"
-      : "bg-blue-50 text-blue-700 ring-blue-200";
-
-  return (
-    <div className="rounded-lg border border-slate-200 bg-white p-2.5">
-      <div className="flex items-start gap-2">
-        <span className={`mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full ${dot}`} />
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-start gap-1.5">
-            <div className="min-w-0 flex-1 text-[12px] font-semibold leading-snug text-slate-900">
-              {title}
-            </div>
-            <span
-              className={`shrink-0 rounded-full px-1.5 py-0.5 text-[9.5px] font-semibold ring-1 ring-inset ${chip}`}
+    <section id="live" className="relative border-b" style={{ borderColor: BRAND.border, background: BRAND.panelBg }}>
+      <div className="mx-auto max-w-[1400px] px-6 py-16 lg:px-16 lg:py-20">
+        <div className="grid grid-cols-12 gap-8">
+          <div className="col-span-12 lg:col-span-3">
+            <div
+              className="text-[11px] font-semibold uppercase tracking-[0.25em]"
+              style={{ fontFamily: FONT_ORBITRON, color: BRAND.accent }}
             >
-              Warning
-            </span>
-            {source && (
-              <span
-                className={`shrink-0 rounded px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wide ring-1 ring-inset ${sourceChip}`}
-              >
-                {sourceLabel[source]}
-              </span>
-            )}
-          </div>
-          <p className="mt-0.5 text-[11px] leading-relaxed text-slate-600">
-            {description}
-          </p>
-          <p className="mt-0.5 text-[11px] italic leading-relaxed text-slate-500">
-            {recommendation}
-          </p>
-          {evidence && (
-            <div className="mt-1 inline-block max-w-full truncate rounded-md bg-slate-50 px-1.5 py-0.5 font-mono text-[10px] text-slate-600 ring-1 ring-inset ring-slate-100">
-              {evidence}
+              001 / Live
             </div>
-          )}
-          <div className="mt-1.5 flex items-center gap-2 text-[10px] text-slate-500">
-            <span>
-              <span className="font-semibold text-slate-700">+{impact}</span>{" "}
-              point impact
-            </span>
+            <div className="mt-3 h-px w-full lg:w-12" style={{ background: BRAND.border }} />
           </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/* ─────────────────────────────────────────────────────────────────
-   LIVE SELF-ANALYSIS
-   ───────────────────────────────────────────────────────────────── */
-
-function SelfAnalysisSection() {
-  return (
-    <section id="live" className="border-b border-slate-200 bg-white">
-      <div className="mx-auto w-full max-w-5xl px-6 py-16 md:px-10 md:py-20">
-        <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
-          <div>
-            <div className="text-[12px] font-semibold uppercase tracking-[0.1em] text-indigo-600">
-              Live demo
-            </div>
-            <h2 className="mt-3 text-3xl font-semibold leading-[1.15] tracking-[-0.02em] md:text-4xl">
-              Run it on this page
+          <div className="col-span-12 lg:col-span-9">
+            <h2
+              className="text-[36px] font-light leading-[1.05] tracking-[-0.03em] sm:text-[48px] lg:text-[56px]"
+              style={{ color: BRAND.textPrimary }}
+            >
+              Run it on <span className="font-semibold">this page</span>
             </h2>
+            <p className="mt-5 max-w-2xl text-[17px] leading-relaxed" style={{ color: BRAND.textSecondary }}>
+              Not a mockup. The engine is analyzing the page you are reading
+              right now. Every finding below is real.
+            </p>
           </div>
-          <p className="max-w-md text-[15px] leading-relaxed text-slate-600 md:text-right">
-            Not a mockup. Not a screenshot. The engine is analyzing the page
-            you are reading right now.
-          </p>
         </div>
 
-        <div className="mt-10">
-          <SelfAnalysis />
+        <div className="mt-10 border p-1" style={{ borderColor: BRAND.border, background: BRAND.warmPanel }}>
+          <div className="border bg-white p-6 lg:p-8" style={{ borderColor: BRAND.border }}>
+            <SelfAnalysis />
+          </div>
         </div>
 
-        <p className="mt-5 text-[13px] leading-relaxed text-slate-500">
-          This marketing page scores poorly on answer readiness, and that is
-          the point. It has the same structural problems we help you find on
-          your own pages. If it scored 95, the tool would not be honest.
+        <p
+          className="mt-6 max-w-2xl text-[11px] font-semibold uppercase tracking-[0.15em]"
+          style={{ fontFamily: FONT_ORBITRON, color: BRAND.textMuted }}
+        >
+          This marketing page scores poorly — and that is the point. If it
+          scored 95, we would be lying.
         </p>
       </div>
     </section>
   );
 }
 
-/* ─────────────────────────────────────────────────────────────────
+/* ─────────────────────────────────────────────────────────────
    PROBLEM
-   ───────────────────────────────────────────────────────────────── */
+   ───────────────────────────────────────────────────────────── */
 
-function Problem() {
+function ProblemSection() {
   return (
-    <section className="border-b border-slate-200 bg-slate-50">
-      <div className="mx-auto w-full max-w-5xl px-6 py-16 md:px-10 md:py-20">
-        <div className="max-w-3xl">
-          <div className="text-[12px] font-semibold uppercase tracking-[0.1em] text-indigo-600">
-            The problem
+    <section id="problem" className="relative border-b" style={{ borderColor: BRAND.border, background: BRAND.warmPanel }}>
+      <div className="mx-auto max-w-[1400px] px-6 py-16 lg:px-16 lg:py-20">
+        <div className="grid grid-cols-12 gap-8">
+          <div className="col-span-12 lg:col-span-3">
+            <div
+              className="text-[11px] font-semibold uppercase tracking-[0.25em]"
+              style={{ fontFamily: FONT_ORBITRON, color: BRAND.accent }}
+            >
+              002 / Problem
+            </div>
+            <div className="mt-3 h-px w-full lg:w-12" style={{ background: BRAND.border }} />
           </div>
-          <h2 className="mt-3 text-3xl font-semibold leading-[1.15] tracking-[-0.02em] md:text-4xl">
-            Search changed. Most content teams didn&apos;t.
-          </h2>
-          <div className="mt-6 space-y-4 text-[16px] leading-relaxed text-slate-600">
-            <p>
+          <div className="col-span-12 lg:col-span-9">
+            <h2
+              className="text-[36px] font-light leading-[1.05] tracking-[-0.03em] sm:text-[48px] lg:text-[56px]"
+              style={{ color: BRAND.textPrimary }}
+            >
+              Search changed.
+              <br />
+              <span className="font-semibold">Content teams didn&apos;t.</span>
+            </h2>
+          </div>
+        </div>
+
+        <div className="mt-12 grid grid-cols-12 gap-8">
+          <div className="col-span-12 lg:col-span-6 lg:col-start-4">
+            <p className="text-[20px] font-light leading-[1.6]" style={{ color: BRAND.textPrimary }}>
               When someone asks ChatGPT, Perplexity, or Google&apos;s AI
               Overviews about your product, the answer is assembled from a
-              handful of passages pulled from a handful of pages. If your
-              pages aren&apos;t structured for extraction, you don&apos;t
-              appear.
-            </p>
-            <p>
-              Content teams today have no way to know which pages are ready
-              and which are invisible. SEO tools measure rankings. This
-              measures something different: whether AI can quote the page.
+              handful of passages pulled from a handful of pages.
             </p>
           </div>
-        </div>
-      </div>
-    </section>
-  );
-}
 
-/* ─────────────────────────────────────────────────────────────────
-   HOW IT WORKS
-   ───────────────────────────────────────────────────────────────── */
-
-function HowItWorks() {
-  return (
-    <section id="how" className="border-b border-slate-200 bg-white">
-      <div className="mx-auto w-full max-w-7xl px-6 py-16 md:px-10 md:py-20">
-        <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
-          <div>
-            <div className="text-[12px] font-semibold uppercase tracking-[0.1em] text-indigo-600">
-              How it works
-            </div>
-            <h2 className="mt-3 text-3xl font-semibold leading-[1.15] tracking-[-0.02em] md:text-4xl">
-              Two surfaces. One engine.
-            </h2>
-          </div>
-          <p className="max-w-md text-[15px] leading-relaxed text-slate-600 md:text-right">
-            Analyze a page while you edit it. Review the whole site before you
-            plan the next sprint. Same deterministic model on both.
-          </p>
-        </div>
-
-        <div className="mt-10 grid gap-5 lg:grid-cols-2">
-          <SurfaceCard
-            eyebrow="Pages Context Panel"
-            title="Feedback while you edit"
-            body="Runs in the SitecoreAI Page Builder sidebar. Open a page and the panel returns a readiness score, a prioritized list of fixes, evidence from the page, and rewrite suggestions."
-            bullets={[
-              "Auto-analyzes when the page changes",
-              "Priority list of top fixes",
-              "Severity filter with counts",
-              "Source tags: standards-based vs heuristic",
-            ]}
-            icon={
-              <svg
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="#4f46e5"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                className="h-5 w-5"
-              >
-                <path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z" />
-                <path d="M14 2v4a2 2 0 0 0 2 2h4" />
-              </svg>
-            }
-          />
-
-          <SurfaceCard
-            eyebrow="Fullscreen Extension"
-            title="The whole site at a glance"
-            body="A site-wide view with every navigation page in a tree and scores populated as pages are analyzed. A priority list ranks the pages that need attention most. Each page opens into a full report."
-            bullets={[
-              "Page tree with score dots",
-              "Site average and distribution",
-              "Priority improvements queue",
-              "Batch analysis with progress",
-            ]}
-            icon={
-              <svg
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="#4f46e5"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                className="h-5 w-5"
-              >
-                <rect x="3" y="3" width="7" height="7" rx="1" />
-                <rect x="14" y="3" width="7" height="7" rx="1" />
-                <rect x="3" y="14" width="7" height="7" rx="1" />
-                <rect x="14" y="14" width="7" height="7" rx="1" />
-              </svg>
-            }
-          />
-        </div>
-      </div>
-    </section>
-  );
-}
-
-function SurfaceCard({
-  eyebrow,
-  title,
-  body,
-  bullets,
-  icon,
-}: {
-  eyebrow: string;
-  title: string;
-  body: string;
-  bullets: string[];
-  icon: React.ReactNode;
-}) {
-  return (
-    <div className="group rounded-2xl border border-slate-200 bg-white p-6 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-lg hover:shadow-slate-200/60">
-      <div className="flex items-center gap-3">
-        <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-indigo-50">
-          {icon}
-        </div>
-        <div className="text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-400">
-          {eyebrow}
-        </div>
-      </div>
-
-      <h3 className="mt-4 text-xl font-semibold tracking-tight">{title}</h3>
-      <p className="mt-2 text-[14.5px] leading-relaxed text-slate-600">{body}</p>
-
-      <ul className="mt-4 space-y-1.5">
-        {bullets.map((b) => (
-          <li
-            key={b}
-            className="flex items-start gap-2 text-[13.5px] text-slate-700"
-          >
-            <svg
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="#4f46e5"
-              strokeWidth="3"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              className="mt-1 h-2.5 w-2.5 shrink-0"
-            >
-              <path d="M20 6 9 17l-5-5" />
-            </svg>
-            <span>{b}</span>
-          </li>
-        ))}
-      </ul>
-    </div>
-  );
-}
-
-/* ─────────────────────────────────────────────────────────────────
-   SCORE MODEL
-   ───────────────────────────────────────────────────────────────── */
-
-function ScoreModel() {
-  const rows = [
-    {
-      name: "Answer Structure",
-      weight: 30,
-      checks:
-        "Heading hierarchy, opening paragraphs, question-style headings, scannable blocks",
-    },
-    {
-      name: "Passage Integrity",
-      weight: 22,
-      checks:
-        "Self-containment, pronoun density, context-dependent references",
-    },
-    {
-      name: "Factual Density",
-      weight: 17,
-      checks: "Numbers with units, dates, comparisons, concrete claims",
-    },
-    {
-      name: "Entity Clarity",
-      weight: 9,
-      checks:
-        "Definitions, title alignment, author signals, metadata hygiene",
-    },
-    {
-      name: "FAQ Readiness",
-      weight: 8,
-      checks:
-        "FAQPage schema, visible Q&A content, schema-to-content consistency",
-    },
-    {
-      name: "Freshness",
-      weight: 8,
-      checks:
-        "dateModified, article:modified_time, ISO 8601 format, staleness threshold",
-    },
-    {
-      name: "Citation Signals",
-      weight: 6,
-      checks:
-        "External source links, named attributions, blockquote cite attributes",
-    },
-  ];
-
-  return (
-    <section id="score" className="border-b border-slate-200 bg-slate-50">
-      <div className="mx-auto w-full max-w-7xl px-6 py-16 md:px-10 md:py-20">
-        <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
-          <div>
-            <div className="text-[12px] font-semibold uppercase tracking-[0.1em] text-indigo-600">
-              Score model
-            </div>
-            <h2 className="mt-3 text-3xl font-semibold leading-[1.15] tracking-[-0.02em] md:text-4xl">
-              Seven weighted categories
-            </h2>
-          </div>
-          <p className="max-w-md text-[15px] leading-relaxed text-slate-600 md:text-right">
-            Deterministic, not generative. Same page, same score — every
-            finding tagged with the standard or heuristic it came from.
-          </p>
-        </div>
-
-        <div className="mt-10 overflow-hidden rounded-2xl border border-slate-200 bg-white">
-          <table className="w-full">
-            <thead className="bg-slate-50">
-              <tr className="border-b border-slate-200">
-                <th className="px-5 py-3 text-left text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-500 md:px-6">
-                  Category
-                </th>
-                <th className="w-20 px-5 py-3 text-right text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-500 md:px-6">
-                  Weight
-                </th>
-                <th className="px-5 py-3 text-left text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-500 md:px-6">
-                  What it checks
-                </th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {rows.map((row) => (
-                <tr key={row.name} className="transition-colors hover:bg-slate-50/60">
-                  <td className="px-5 py-4 text-[14.5px] font-medium text-slate-900 md:px-6">
-                    {row.name}
-                  </td>
-                  <td className="px-5 py-4 text-right md:px-6">
-                    <span className="rounded-md bg-indigo-50 px-2 py-0.5 text-[13px] font-semibold text-indigo-700">
-                      {row.weight}
-                    </span>
-                  </td>
-                  <td className="px-5 py-4 text-[14px] leading-relaxed text-slate-600 md:px-6">
-                    {row.checks}
-                  </td>
-                </tr>
-              ))}
-              <tr className="bg-slate-50/70">
-                <td className="px-5 py-4 text-[14.5px] font-semibold text-slate-900 md:px-6">
-                  Total
-                </td>
-                <td className="px-5 py-4 text-right md:px-6">
-                  <span className="rounded-md bg-indigo-100 px-2 py-0.5 text-[13px] font-bold text-indigo-800">
-                    100
-                  </span>
-                </td>
-                <td className="px-5 py-4 text-[13.5px] italic leading-relaxed text-slate-500 md:px-6">
-                  Standards-based detection; editorial scoring disclosed in
-                  the in-app Help panel.
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </section>
-  );
-}
-
-/* ─────────────────────────────────────────────────────────────────
-   PRINCIPLES
-   ───────────────────────────────────────────────────────────────── */
-
-function Principles() {
-  const items = [
-    {
-      title: "Deterministic",
-      body: "No model produces the score. Auditable and reproducible.",
-    },
-    {
-      title: "Evidence-first",
-      body: "Every finding carries the sample that triggered it.",
-    },
-    {
-      title: "Actionable",
-      body: "Plain-language recommendations and rewrites you can copy.",
-    },
-    {
-      title: "Page Builder native",
-      body: "Runs where the marketer works. Same engine everywhere.",
-    },
-    {
-      title: "Disclosed",
-      body: "Findings tagged with the standard they detect against, or labelled heuristic if they are editorial.",
-    },
-  ];
-
-  return (
-    <section className="border-b border-slate-200 bg-white">
-      <div className="mx-auto w-full max-w-7xl px-6 py-16 md:px-10 md:py-20">
-        <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
-          <div>
-            <div className="text-[12px] font-semibold uppercase tracking-[0.1em] text-indigo-600">
-              Principles
-            </div>
-            <h2 className="mt-3 text-3xl font-semibold leading-[1.15] tracking-[-0.02em] md:text-4xl">
-              Built for teams who need to trust the number
-            </h2>
-          </div>
-        </div>
-
-        <div className="mt-10 divide-y divide-slate-200 border-y border-slate-200">
-          {items.map((item, i) => (
-            <div
-              key={item.title}
-              className="grid gap-2 py-5 md:grid-cols-[80px_220px_1fr] md:items-baseline md:gap-6"
-            >
-              <div className="font-mono text-[12px] font-semibold text-indigo-600">
-                0{i + 1}
-              </div>
-              <div className="text-[16px] font-semibold tracking-tight text-slate-900">
-                {item.title}
-              </div>
-              <p className="text-[14.5px] leading-relaxed text-slate-600">
-                {item.body}
+          <div className="col-span-12 lg:col-span-3 lg:col-start-4">
+            <div className="mt-8 border-l-2 pl-6" style={{ borderColor: BRAND.accent }}>
+              <p className="text-[15px] leading-relaxed" style={{ color: BRAND.textSecondary }}>
+                If your pages aren&apos;t structured for extraction, you
+                don&apos;t appear.
               </p>
+            </div>
+          </div>
+
+          <div className="col-span-12 lg:col-span-4 lg:col-start-8">
+            <div className="mt-8 border-l-2 pl-6" style={{ borderColor: BRAND.borderStrong }}>
+              <p className="text-[15px] leading-relaxed" style={{ color: BRAND.textSecondary }}>
+                SEO tools measure rankings. This measures something different:
+                whether AI can quote the page.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/* ─────────────────────────────────────────────────────────────
+   SURFACES
+   ───────────────────────────────────────────────────────────── */
+
+function SurfacesSection() {
+  return (
+    <section id="surfaces" className="relative border-b" style={{ borderColor: BRAND.border, background: BRAND.panelBg }}>
+      <div className="mx-auto max-w-[1400px] px-6 py-16 lg:px-16 lg:py-20">
+        <div className="grid grid-cols-12 gap-8">
+          <div className="col-span-12 lg:col-span-3">
+            <div
+              className="text-[11px] font-semibold uppercase tracking-[0.25em]"
+              style={{ fontFamily: FONT_ORBITRON, color: BRAND.accent }}
+            >
+              003 / Surfaces
+            </div>
+            <div className="mt-3 h-px w-full lg:w-12" style={{ background: BRAND.border }} />
+          </div>
+          <div className="col-span-12 lg:col-span-9">
+            <h2
+              className="text-[36px] font-light leading-[1.05] tracking-[-0.03em] sm:text-[48px] lg:text-[56px]"
+              style={{ color: BRAND.textPrimary }}
+            >
+              Two surfaces.
+              <br />
+              <span className="font-semibold">One engine.</span>
+            </h2>
+          </div>
+        </div>
+
+        <div className="mt-12 grid grid-cols-12 gap-6">
+          {[
+            {
+              n: '01',
+              title: 'Pages Context Panel',
+              tag: 'Inline',
+              body: 'Runs in the SitecoreAI Page Builder sidebar. Open a page — the panel returns a score, a prioritized list of fixes, evidence, and rewrite suggestions.',
+              bullets: ['Auto-analyzes on edit', 'Priority fix queue', 'Severity filter with counts', 'Source tags on every finding'],
+            },
+            {
+              n: '02',
+              title: 'Fullscreen Extension',
+              tag: 'Site-wide',
+              body: 'A site-wide view with every navigation page in a tree and scores populated as pages are analyzed. A priority list ranks the pages that need attention most.',
+              bullets: ['Page tree with score dots', 'Site average and distribution', 'Priority improvements queue', 'Batch analysis with progress'],
+            },
+          ].map((c) => (
+            <div key={c.n} className="col-span-12 lg:col-span-6">
+              <div
+                className="group relative overflow-hidden border bg-white p-8 transition-all hover:-translate-y-px hover:shadow-lg lg:p-10"
+                style={{ borderColor: BRAND.border }}
+              >
+                <div className="flex items-baseline justify-between">
+                  <span
+                    className="text-[11px] font-semibold uppercase tracking-[0.25em]"
+                    style={{ fontFamily: FONT_ORBITRON, color: BRAND.textMuted }}
+                  >
+                    {c.n}
+                  </span>
+                  <span
+                    className="text-[10px] font-semibold uppercase tracking-[0.25em]"
+                    style={{ fontFamily: FONT_ORBITRON, color: BRAND.accent }}
+                  >
+                    {c.tag}
+                  </span>
+                </div>
+                <h3 className="mt-6 text-[26px] font-semibold tracking-[-0.02em]" style={{ color: BRAND.textPrimary }}>
+                  {c.title}
+                </h3>
+                <p className="mt-4 text-[15px] leading-relaxed" style={{ color: BRAND.textSecondary }}>
+                  {c.body}
+                </p>
+                <ul className="mt-6 space-y-2.5 border-t pt-6" style={{ borderColor: BRAND.border }}>
+                  {c.bullets.map((b) => (
+                    <li key={b} className="flex items-start gap-3 text-[14px]" style={{ color: BRAND.textPrimary }}>
+                      <span className="mt-2 h-1 w-3" style={{ background: BRAND.accent }} />
+                      {b}
+                    </li>
+                  ))}
+                </ul>
+                <span
+                  className="absolute bottom-0 left-0 h-1 w-0 transition-all duration-700 group-hover:w-full"
+                  style={{ background: BRAND.accent }}
+                />
+              </div>
             </div>
           ))}
         </div>
@@ -881,183 +803,489 @@ function Principles() {
   );
 }
 
-/* ─────────────────────────────────────────────────────────────────
-   LIMITS
-   ───────────────────────────────────────────────────────────────── */
+/* ─────────────────────────────────────────────────────────────
+   MODEL
+   ───────────────────────────────────────────────────────────── */
 
-function Honest() {
+function ModelSection() {
   return (
-    <section id="limits" className="border-b border-slate-200 bg-slate-50">
-      <div className="mx-auto w-full max-w-7xl px-6 py-16 md:px-10 md:py-20">
-        <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
-          <div>
-            <div className="text-[12px] font-semibold uppercase tracking-[0.1em] text-indigo-600">
-              Limitations
+    <section id="model" className="relative border-b" style={{ borderColor: BRAND.border, background: BRAND.warmPanel }}>
+      <div className="mx-auto max-w-[1400px] px-6 py-16 lg:px-16 lg:py-20">
+        <div className="grid grid-cols-12 gap-8">
+          <div className="col-span-12 lg:col-span-3">
+            <div
+              className="text-[11px] font-semibold uppercase tracking-[0.25em]"
+              style={{ fontFamily: FONT_ORBITRON, color: BRAND.accent }}
+            >
+              004 / Model
             </div>
-            <h2 className="mt-3 text-3xl font-semibold leading-[1.15] tracking-[-0.02em] md:text-4xl">
-              What this is not
+            <div className="mt-3 h-px w-full lg:w-12" style={{ background: BRAND.border }} />
+          </div>
+          <div className="col-span-12 lg:col-span-9">
+            <h2
+              className="text-[36px] font-light leading-[1.05] tracking-[-0.03em] sm:text-[48px] lg:text-[56px]"
+              style={{ color: BRAND.textPrimary }}
+            >
+              Seven categories.
+              <br />
+              <span className="font-semibold">One hundred points.</span>
             </h2>
           </div>
-          <p className="max-w-md text-[15px] leading-relaxed text-slate-600 md:text-right">
-            Readiness is not the same as ranking. AI citation is not
-            guaranteeable by any tool.
-          </p>
         </div>
 
-        <div className="mt-10 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          <LimitRow
-            title="Not a ranking score"
-            body="Internal content-readiness indicator. Does not predict or guarantee citation in any AI surface."
-          />
-          <LimitRow
-            title="Published HTML only"
-            body="Unsaved edits in Page Builder are not reflected until the page is published."
-          />
-          <LimitRow
-            title="Heuristics are labeled"
-            body="Detectors such as the 12-month staleness threshold and English-only attribution matching are editorial rules, tagged heuristic in the report."
-          />
-          <LimitRow
-            title="No external fact-checking"
-            body="Measures structure and answer-readiness signals only, not factual accuracy."
-          />
-          <LimitRow
-            title="No AI in the pipeline"
-            body="The scoring engine is deterministic. No LLM is used to produce the score."
-          />
-          <LimitRow
-            title="Time-dependent freshness"
-            body="The freshness rule compares against the analysis timestamp, so scores can change as content ages."
-          />
-        </div>
-      </div>
-    </section>
-  );
-}
-
-function LimitRow({ title, body }: { title: string; body: string }) {
-  return (
-    <div className="rounded-xl border border-slate-200 bg-white p-4">
-      <div className="flex items-start gap-3">
-        <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-600">
-          <svg
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2.5"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            className="h-3 w-3"
-          >
-            <path d="M12 8v4" />
-            <path d="M12 16h.01" />
-          </svg>
-        </span>
-        <div className="min-w-0 flex-1">
-          <div className="text-[14.5px] font-semibold text-slate-900">{title}</div>
-          <p className="mt-1 text-[13.5px] leading-relaxed text-slate-600">
-            {body}
-          </p>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/* ─────────────────────────────────────────────────────────────────
-   CTA
-   ───────────────────────────────────────────────────────────────── */
-
-function CTA() {
-  return (
-    <section className="relative overflow-hidden bg-slate-950">
-      <div aria-hidden className="pointer-events-none absolute inset-0">
-        <div className="absolute left-1/2 top-0 h-[400px] w-[900px] -translate-x-1/2 rounded-full bg-gradient-to-b from-indigo-500/20 to-transparent blur-3xl" />
-        <div
-          className="absolute inset-0 opacity-[0.08]"
-          style={{
-            backgroundImage:
-              "linear-gradient(to right, white 1px, transparent 1px), linear-gradient(to bottom, white 1px, transparent 1px)",
-            backgroundSize: "48px 48px",
-          }}
-        />
-      </div>
-
-      <div className="relative mx-auto w-full max-w-3xl px-6 py-20 text-center md:px-10 md:py-24">
-        <h2 className="text-3xl font-semibold leading-[1.1] tracking-[-0.02em] text-white md:text-[44px]">
-          See how ready your content is
-        </h2>
-        <p className="mx-auto mt-5 max-w-xl text-[16px] leading-relaxed text-slate-300">
-          Install from the Sitecore Marketplace and open the panel on any page
-          in Page Builder. The first analysis runs automatically.
-        </p>
-
-        <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
-          <a
-            href={MARKETPLACE_URL}
-            className="group inline-flex items-center gap-2 rounded-xl bg-white px-5 py-2.5 text-[14px] font-semibold text-slate-900 shadow-lg shadow-slate-950/40 transition-all hover:bg-slate-100"
-          >
-            Install from Marketplace
-            <svg
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5"
+        <div className="mt-12 border-t" style={{ borderColor: BRAND.border }}>
+          {SCORE_ROWS.map((row) => (
+            <div
+              key={row.n}
+              className="group grid grid-cols-12 items-center gap-6 border-b py-6 transition-colors hover:bg-white"
+              style={{ borderColor: BRAND.border }}
             >
-              <path d="M5 12h14" />
-              <path d="m12 5 7 7-7 7" />
-            </svg>
-          </a>
+              <div
+                className="col-span-2 text-[12px] font-semibold uppercase tracking-[0.25em] lg:col-span-1"
+                style={{ fontFamily: FONT_ORBITRON, color: BRAND.textMuted }}
+              >
+                {row.n}
+              </div>
+              <div className="col-span-10 lg:col-span-4">
+                <div className="text-[22px] font-semibold tracking-[-0.01em] lg:text-[24px]" style={{ color: BRAND.textPrimary }}>
+                  {row.name}
+                </div>
+              </div>
+              <div className="col-span-12 lg:col-span-5">
+                <p className="text-[14px] leading-relaxed" style={{ color: BRAND.textSecondary }}>
+                  {row.checks}
+                </p>
+              </div>
+              <div className="col-span-8 lg:col-span-1">
+                <SourceTag source={row.source} />
+              </div>
+              <div className="col-span-4 text-right lg:col-span-1">
+                <span className="text-[26px] font-light tabular-nums lg:text-[30px]" style={{ color: BRAND.textPrimary }}>
+                  {row.weight}
+                </span>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div className="mt-10 grid grid-cols-12 items-center gap-6">
+          <div className="col-span-12 lg:col-span-9 lg:col-start-4">
+            <p
+              className="text-[11px] font-semibold uppercase tracking-[0.15em]"
+              style={{ fontFamily: FONT_ORBITRON, color: BRAND.textMuted }}
+            >
+              Standards-based detection. Editorial scoring, disclosed in-app.
+            </p>
+          </div>
+          <div className="col-span-12 lg:col-span-2 lg:col-start-11">
+            <div className="flex items-baseline justify-end gap-3">
+              <span
+                className="text-[11px] font-semibold uppercase tracking-[0.25em]"
+                style={{ fontFamily: FONT_ORBITRON, color: BRAND.textMuted }}
+              >
+                Total
+              </span>
+              <span className="text-[34px] font-light tabular-nums" style={{ color: BRAND.accent }}>
+                100
+              </span>
+            </div>
+          </div>
         </div>
       </div>
     </section>
   );
 }
 
-/* ─────────────────────────────────────────────────────────────────
-   FOOTER
-   ───────────────────────────────────────────────────────────────── */
+/* ─────────────────────────────────────────────────────────────
+   MANIFESTO
+   ───────────────────────────────────────────────────────────── */
 
-function SiteFooter() {
+function ManifestoSection() {
   return (
-    <footer className="border-t border-slate-200 bg-white">
-      <div className="mx-auto flex w-full max-w-7xl flex-col items-center justify-between gap-4 px-6 py-7 md:flex-row md:px-10">
-        <div className="flex items-center gap-2.5 text-[13.5px] text-slate-600">
-          <img
-            src="/appicon.png"
-            alt=""
-            width={22}
-            height={22}
-            className="h-[22px] w-[22px] rounded-md"
-          />
-          <span>Answer Readiness</span>
+    <section id="manifesto" className="relative border-b" style={{ borderColor: BRAND.border, background: BRAND.panelBg }}>
+      <div className="mx-auto max-w-[1400px] px-6 py-16 lg:px-16 lg:py-20">
+        <div className="grid grid-cols-12 gap-8">
+          <div className="col-span-12 lg:col-span-3">
+            <div
+              className="text-[11px] font-semibold uppercase tracking-[0.25em]"
+              style={{ fontFamily: FONT_ORBITRON, color: BRAND.accent }}
+            >
+              005 / Manifesto
+            </div>
+            <div className="mt-3 h-px w-full lg:w-12" style={{ background: BRAND.border }} />
+          </div>
+          <div className="col-span-12 lg:col-span-9">
+            <h2
+              className="text-[36px] font-light leading-[1.05] tracking-[-0.03em] sm:text-[48px] lg:text-[56px]"
+              style={{ color: BRAND.textPrimary }}
+            >
+              Built for teams
+              <br />
+              <span className="font-semibold">who need to trust the number.</span>
+            </h2>
+          </div>
         </div>
 
-        <div className="flex flex-wrap items-center justify-center gap-x-7 gap-y-3 text-[13.5px] text-slate-600">
-          <a href="#live" className="transition-colors hover:text-slate-900">
-            Live demo
-          </a>
-          <a href="#how" className="transition-colors hover:text-slate-900">
-            How it works
-          </a>
-          <a href="#score" className="transition-colors hover:text-slate-900">
-            Score model
-          </a>
-          <a href="#limits" className="transition-colors hover:text-slate-900">
-            Limitations
-          </a>
-          <a href={MARKETPLACE_URL} className="transition-colors hover:text-slate-900">
-            Marketplace
-          </a>
+        <div className="mt-12 grid grid-cols-12 gap-x-6 gap-y-12">
+          {MANIFESTO.map((m, i) => (
+            <div
+              key={m.n}
+              className={`col-span-12 ${i % 2 === 0 ? 'lg:col-span-5' : 'lg:col-span-5 lg:col-start-8'}`}
+            >
+              <div className="border-t-2 pt-5" style={{ borderColor: BRAND.border }}>
+                <div className="flex items-baseline justify-between">
+                  <span
+                    className="text-[11px] font-semibold uppercase tracking-[0.25em]"
+                    style={{ fontFamily: FONT_ORBITRON, color: BRAND.textMuted }}
+                  >
+                    {m.n}
+                  </span>
+                  <span className="h-2 w-2 rounded-full" style={{ background: BRAND.accent }} />
+                </div>
+                <h3 className="mt-5 text-[28px] font-light tracking-[-0.02em]" style={{ color: BRAND.textPrimary }}>
+                  {m.title}
+                </h3>
+                <p className="mt-3 text-[15.5px] leading-relaxed" style={{ color: BRAND.textSecondary }}>
+                  {m.body}
+                </p>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/* ─────────────────────────────────────────────────────────────
+   FAQ
+   ───────────────────────────────────────────────────────────── */
+
+function FaqSection() {
+  const [open, setOpen] = useState<number | null>(0);
+
+  return (
+    <section id="faq" className="relative border-b" style={{ borderColor: BRAND.border, background: BRAND.warmPanel }}>
+      <div className="mx-auto max-w-[1400px] px-6 py-16 lg:px-16 lg:py-20">
+        <div className="grid grid-cols-12 gap-8">
+          <div className="col-span-12 lg:col-span-3">
+            <div
+              className="text-[11px] font-semibold uppercase tracking-[0.25em]"
+              style={{ fontFamily: FONT_ORBITRON, color: BRAND.accent }}
+            >
+              006 / FAQ
+            </div>
+            <div className="mt-3 h-px w-full lg:w-12" style={{ background: BRAND.border }} />
+          </div>
+          <div className="col-span-12 lg:col-span-9">
+            <h2
+              className="text-[36px] font-light leading-[1.05] tracking-[-0.03em] sm:text-[48px] lg:text-[56px]"
+              style={{ color: BRAND.textPrimary }}
+            >
+              Frequently
+              <br />
+              <span className="font-semibold">asked.</span>
+            </h2>
+          </div>
         </div>
 
-        <div className="text-[12.5px] text-slate-400">
-          © {new Date().getFullYear()}
+        <div className="mt-12 border-t" style={{ borderColor: BRAND.border }}>
+          {FAQ_ITEMS.map((item, i) => {
+            const isOpen = open === i;
+            return (
+              <div key={item.q} className="border-b" style={{ borderColor: BRAND.border }}>
+                <button
+                  type="button"
+                  onClick={() => setOpen(isOpen ? null : i)}
+                  className="group flex w-full items-start gap-6 py-6 text-left"
+                >
+                  <span
+                    className="mt-2 text-[11px] font-semibold uppercase tracking-[0.25em]"
+                    style={{ fontFamily: FONT_ORBITRON, color: BRAND.textMuted }}
+                  >
+                    Q{String(i + 1).padStart(2, '0')}
+                  </span>
+                  <span
+                    className="min-w-0 flex-1 text-[20px] font-light leading-[1.35] tracking-[-0.01em] lg:text-[24px]"
+                    style={{ color: isOpen ? BRAND.accentHover : BRAND.textPrimary }}
+                  >
+                    {item.q}
+                  </span>
+                  <span
+                    className="mt-2 shrink-0 text-[16px]"
+                    style={{
+                      fontFamily: FONT_ORBITRON,
+                      color: isOpen ? BRAND.accent : BRAND.textMuted,
+                      transform: isOpen ? 'rotate(45deg)' : 'rotate(0deg)',
+                      transition: 'transform 300ms ease, color 300ms ease',
+                    }}
+                  >
+                    +
+                  </span>
+                </button>
+                <div
+                  className="grid overflow-hidden transition-[grid-template-rows] duration-500 ease-[cubic-bezier(0.16,1,0.3,1)]"
+                  style={{ gridTemplateRows: isOpen ? '1fr' : '0fr' }}
+                >
+                  <div className="min-h-0">
+                    <div className="grid grid-cols-12 gap-6 pb-6">
+                      <div className="col-span-12 lg:col-span-2 lg:col-start-2">
+                        <span
+                          className="text-[10px] font-semibold uppercase tracking-[0.25em]"
+                          style={{ fontFamily: FONT_ORBITRON, color: BRAND.textMuted }}
+                        >
+                          Answer
+                        </span>
+                      </div>
+                      <div className="col-span-12 lg:col-span-8">
+                        <p className="text-[15.5px] leading-relaxed" style={{ color: BRAND.textSecondary }}>
+                          {item.a}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/* ─────────────────────────────────────────────────────────────
+   FINALE
+   ───────────────────────────────────────────────────────────── */
+
+function Finale() {
+  return (
+    <section className="relative overflow-hidden border-b" style={{ borderColor: BRAND.border, background: BRAND.panelBg }}>
+      <div
+        aria-hidden
+        className="absolute inset-0"
+        style={{ background: `radial-gradient(ellipse 60% 60% at 50% 100%, ${BRAND.accentTint}, transparent 70%)` }}
+      />
+
+      <div className="relative mx-auto max-w-[1400px] px-6 py-24 lg:px-16 lg:py-28">
+        <div className="grid grid-cols-12 gap-8">
+          <div className="col-span-12 lg:col-span-2">
+            <div
+              className="text-[11px] font-semibold uppercase tracking-[0.25em]"
+              style={{ fontFamily: FONT_ORBITRON, color: BRAND.accent }}
+            >
+              007 / End
+            </div>
+          </div>
+          <div className="col-span-12 lg:col-span-10">
+            <h2
+              className="text-[40px] font-light leading-[1.02] tracking-[-0.04em] sm:text-[64px] lg:text-[80px]"
+              style={{ color: BRAND.textPrimary }}
+            >
+              Ready to see
+              <br />
+              <span className="font-semibold">how ready you are?</span>
+            </h2>
+
+            <div className="mt-12 flex flex-wrap items-center gap-4">
+              <a
+                href={MARKETPLACE_URL}
+                className="group inline-flex h-14 items-center gap-3 rounded-md px-8 text-[12px] font-semibold uppercase tracking-[0.2em] text-white transition-all hover:-translate-y-px"
+                style={{ fontFamily: FONT_ORBITRON, background: BRAND.dark }}
+              >
+                Install from Marketplace
+                <ArrowIcon className="h-4 w-4 transition-transform group-hover:translate-x-1" />
+              </a>
+              <a
+                href="#live"
+                className="group inline-flex h-14 items-center gap-3 rounded-md border bg-white px-8 text-[12px] font-semibold uppercase tracking-[0.2em] transition-all hover:-translate-y-px"
+                style={{ fontFamily: FONT_ORBITRON, borderColor: BRAND.border, color: BRAND.textPrimary }}
+              >
+                Re-run the demo
+              </a>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/* ─────────────────────────────────────────────────────────────
+   FOOTER
+   ───────────────────────────────────────────────────────────── */
+
+function Footer() {
+  return (
+    <footer className="relative" style={{ background: BRAND.pageBg }}>
+      <div className="mx-auto max-w-[1400px] px-6 py-10 lg:px-16">
+        <div className="grid grid-cols-12 gap-8">
+          <div className="col-span-12 lg:col-span-4">
+            <div className="flex items-center gap-3">
+              <img
+                src="/appicon.png"
+                alt=""
+                width={24}
+                height={24}
+                className="h-6 w-6 rounded-md ring-1"
+                style={{ boxShadow: `0 0 0 1px ${BRAND.border}` }}
+              />
+              <span
+                className="text-[12px] font-semibold uppercase tracking-[0.2em]"
+                style={{ fontFamily: FONT_ORBITRON, color: BRAND.textPrimary }}
+              >
+                Answer Readiness
+              </span>
+            </div>
+            <p className="mt-3 max-w-sm text-[13px] leading-relaxed" style={{ color: BRAND.textMuted }}>
+              A SitecoreAI Marketplace app by BizTechnoSys. Deterministic
+              AEO/GEO scoring inside Page Builder.
+            </p>
+          </div>
+
+          <div className="col-span-6 lg:col-span-2 lg:col-start-7">
+            <div
+              className="text-[10px] font-semibold uppercase tracking-[0.25em]"
+              style={{ fontFamily: FONT_ORBITRON, color: BRAND.textMuted }}
+            >
+              Site
+            </div>
+            <ul className="mt-3 space-y-2 text-[13px]">
+              <li>
+                <a href="#live" style={{ color: BRAND.textSecondary }}>
+                  Live demo
+                </a>
+              </li>
+              <li>
+                <a href="#model" style={{ color: BRAND.textSecondary }}>
+                  Score model
+                </a>
+              </li>
+              <li>
+                <a href="#manifesto" style={{ color: BRAND.textSecondary }}>
+                  Manifesto
+                </a>
+              </li>
+              <li>
+                <a href="#faq" style={{ color: BRAND.textSecondary }}>
+                  FAQ
+                </a>
+              </li>
+            </ul>
+          </div>
+
+          <div className="col-span-6 lg:col-span-2">
+            <div
+              className="text-[10px] font-semibold uppercase tracking-[0.25em]"
+              style={{ fontFamily: FONT_ORBITRON, color: BRAND.textMuted }}
+            >
+              External
+            </div>
+            <ul className="mt-3 space-y-2 text-[13px]">
+              <li>
+                <a href={MARKETPLACE_URL} style={{ color: BRAND.textSecondary }}>
+                  Marketplace
+                </a>
+              </li>
+              <li>
+                <a
+                  href="https://github.com/uday0508/sitecoreai-answer-readiness"
+                  style={{ color: BRAND.textSecondary }}
+                >
+                  GitHub
+                </a>
+              </li>
+            </ul>
+          </div>
+        </div>
+
+        <div
+          className="mt-10 flex flex-col items-start justify-between gap-4 border-t pt-6 sm:flex-row sm:items-center"
+          style={{ borderColor: BRAND.border }}
+        >
+          <div
+            className="text-[10px] font-semibold uppercase tracking-[0.25em]"
+            style={{ fontFamily: FONT_ORBITRON, color: BRAND.textMuted }}
+          >
+            © {new Date().getFullYear()} BizTechnoSys
+          </div>
+          <div
+            className="text-[10px] font-semibold uppercase tracking-[0.25em]"
+            style={{ fontFamily: FONT_ORBITRON, color: BRAND.textMuted }}
+          >
+            Not a ranking score · Not a citation guarantee
+          </div>
         </div>
       </div>
     </footer>
+  );
+}
+
+/* ─────────────────────────────────────────────────────────────
+   SHORTCUTS OVERLAY
+   ───────────────────────────────────────────────────────────── */
+
+function ShortcutsOverlay({ onClose }: { onClose: () => void }) {
+  const shortcuts = [
+    { key: '?', label: 'Toggle this overlay' },
+    { key: 'Esc', label: 'Close any modal' },
+  ];
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label="Keyboard shortcuts"
+      onClick={onClose}
+      className="fixed inset-0 z-[70] flex items-center justify-center p-4 backdrop-blur-sm"
+      style={{ background: 'rgba(15, 15, 15, 0.4)' }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="w-full max-w-md border bg-white p-8 shadow-2xl"
+        style={{ borderColor: BRAND.border }}
+      >
+        <div className="flex items-center justify-between">
+          <span
+            className="text-[11px] font-semibold uppercase tracking-[0.25em]"
+            style={{ fontFamily: FONT_ORBITRON, color: BRAND.textSecondary }}
+          >
+            Keyboard
+          </span>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close"
+            className="text-[14px]"
+            style={{ fontFamily: FONT_ORBITRON, color: BRAND.textMuted }}
+          >
+            ✕
+          </button>
+        </div>
+        <ul className="mt-8 space-y-4">
+          {shortcuts.map((s) => (
+            <li
+              key={s.key}
+              className="flex items-center justify-between gap-3 border-b pb-3"
+              style={{ borderColor: BRAND.border }}
+            >
+              <span className="text-[14px]" style={{ color: BRAND.textPrimary }}>
+                {s.label}
+              </span>
+              <kbd
+                className="border px-2.5 py-1 text-[11px]"
+                style={{
+                  fontFamily: FONT_ORBITRON,
+                  borderColor: BRAND.border,
+                  background: BRAND.pageBg,
+                  color: BRAND.textSecondary,
+                }}
+              >
+                {s.key}
+              </kbd>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </div>
   );
 }
