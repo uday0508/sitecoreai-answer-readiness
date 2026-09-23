@@ -1,516 +1,275 @@
-# SitecoreAI Answer Readiness
+# Answer Readiness
 
-A Sitecore Marketplace app that analyzes how ready your Sitecore content is for AI-powered discovery and answer generation.
+**A SitecoreAI Marketplace app that scores Sitecore pages for AI-powered discovery, answer extraction, and citation.**
 
-The app provides two surfaces that share one deterministic analysis engine:
-
-- **Pages Context Panel** — analyzes the page currently open in SitecoreAI Page Builder, directly in the authoring sidebar.
-- **Fullscreen Extension** — browse every navigation page in a site, analyze any of them, and review a full answer-readiness report.
-
-Both surfaces use the same scoring model, the same rules, and the same finding format. A page scores the same in both views.
+[![Sitecore Marketplace](https://img.shields.io/badge/Sitecore-Marketplace-blue)](https://portal.sitecorecloud.io/marketplace/details?id=pub-35343dea-8835-4c7d-9f51-02ac96d4dc42)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](#license)
 
 ---
 
-## Table of Contents
+## What this is
 
-- [What it does](#what-it-does)
-- [Features](#features)
-- [Architecture](#architecture)
-- [Repository structure](#repository-structure)
-- [Prerequisites](#prerequisites)
-- [Installation](#installation)
-- [Local development](#local-development)
-- [Marketplace installation](#marketplace-installation)
-- [Analysis engine](#analysis-engine)
-- [Scoring model](#scoring-model)
-- [Security](#security)
-- [Performance](#performance)
-- [Testing](#testing)
-- [Limitations](#limitations)
-- [Roadmap](#roadmap)
-- [Contributing](#contributing)
-- [License](#license)
-- [Attribution](#attribution)
+AI answer engines — ChatGPT, Perplexity, Gemini, Google AI Overviews — do not read pages. They pull short passages and cite them as answers. A page that reads well for a person can still be invisible to AI if it lacks clear structure, direct answers, self-contained sections, concrete facts, or machine-readable freshness and citation signals.
 
----
+**Answer Readiness** scores every page against those signals and tells you what to fix, inside the SitecoreAI Page Builder.
 
-## What it does
-
-Marketers author content in SitecoreAI Page Builder and publish it to the web. Increasingly, that published content is read not by humans in a browser, but by AI answer engines — ChatGPT, Perplexity, Gemini, Google AI Overviews, and others.
-
-Those engines do not read pages. They extract **short passages** and cite them as answers. A page that reads well for a human can still be invisible to AI if it lacks structure, direct answers, self-contained sections, concrete facts, or question-style headings.
-
-This app analyzes a page for those signals and reports what to fix.
-
-The score is a **content-readiness indicator**. It is not a search ranking score. It does not guarantee that any AI surface will cite the page.
+- **Live demo:** https://sitecoreai-answer-readiness.biztechnosys.com
+- **Install:** https://portal.sitecorecloud.io/marketplace/details?id=pub-35343dea-8835-4c7d-9f51-02ac96d4dc42
 
 ---
 
 ## Features
 
-### Analysis categories
+- **Pages Context Panel** — runs in the SitecoreAI Page Builder sidebar. Instant readiness score, prioritized list of fixes, evidence from the page, and rewrite suggestions.
+- **Fullscreen Extension** — site-wide view with every navigation page in a tree, a summary strip with the average score and page distribution, a priority list, and a full report per page.
+- **Seven weighted categories** — answer structure, passage integrity, factual density, entity clarity, FAQ readiness, freshness, citation signals.
+- **Deterministic engine** — no LLM. Same published HTML + same analysis timestamp + same policy produces the same score.
+- **Evidence-first** — every finding carries the sample that triggered it. Heading text, paragraph excerpt, missing schema property, outbound link.
+- **Source-tagged** — every finding is labeled with the standard it detects against (`schema.org`, `OGP`, `HTML`) or marked `heuristic` if it is an editorial rule.
+- **Disclosed policy** — thresholds, category weights, and point deductions are documented in the in-app Help panel.
 
-| Category | Weight | What it measures |
+---
+
+## How the score works
+
+Seven weighted categories sum to 100:
+
+| Category | Weight | What it checks |
 |---|---|---|
-| **Answer Structure** | 35 | Heading hierarchy, opening paragraphs, question-style headings, scannable blocks |
-| **Passage Integrity** | 25 | Self-containment, pronoun density, context-dependent references |
-| **Factual Density** | 20 | Numbers, dates, percentages, comparisons per 100 words |
-| **Entity Clarity** | 10 | Definition-style language, title alignment, author signals, metadata hygiene |
-| **FAQ Readiness** | 10 | Question-answer structure, FAQPage schema, matched Q&A pairing |
+| Answer Structure | 30 | Heading hierarchy, opening paragraphs, question-style headings, scannable blocks |
+| Passage Integrity | 22 | Self-containment, pronoun density, context-dependent references |
+| Factual Density | 17 | Numbers with units, dates, comparisons, concrete claims |
+| Entity Clarity | 9 | Definitions, title alignment, author signals, metadata hygiene |
+| FAQ Readiness | 8 | FAQPage schema, visible Q&A content, schema-to-content consistency |
+| Freshness | 8 | `dateModified`, `article:modified_time`, ISO 8601, staleness threshold |
+| Citation Signals | 6 | External source links, named attributions, blockquote cite attributes |
 
-### Findings
+### Standards-based detection vs. editorial heuristics
 
-Every finding carries:
+Every finding carries a `source` field:
 
-- **Severity** — `error`, `warning`, `info`, or `pass`
-- **Category** — which of the five buckets it belongs to
-- **Title and description** — what was detected, why it matters
-- **Recommendation** — what to do about it
-- **Score impact** — how many points it costs
-- **Samples** — concrete evidence from the page (headings, paragraphs, schema)
-- **Suggestion** — a deterministic rewrite where one can be produced
-- **Level** — `page`, `component`, or `unknown`, so the marketer knows where to fix
+- **`open-graph`** — parsed from Open Graph Protocol metadata (`article:modified_time`, `og:updated_time`, `og:url`)
+- **`schema-org`** — parsed from schema.org JSON-LD or Microdata (`Article`, `BlogPosting`, `FAQPage`, `dateModified`, `author`)
+- **`html-standard`** — parsed from HTML Living Standard elements (`<time>`, `<blockquote cite>`, `<h1>`–`<h6>`, `<link rel="canonical">`, `<a href>`)
+- **`robots-exclusion`** — parsed from robots.txt against Google's published crawler documentation (`Google-Extended`)
+- **`llms-txt`** — matched against the llms.txt convention (emerging, not a formal standard)
+- **`heuristic`** — editorial pattern or threshold chosen by this app
 
-### Pages Context Panel
+Category weights, point deductions, and thresholds (including the 12-month freshness threshold) are **editorial policy**, not standards. They are disclosed in the in-app Help panel.
 
-- Runs inside Page Builder, no context switching
-- Auto-analyzes when the page changes
-- Priority list of the top fixes
-- Category accordion with dismissible findings
-- Score trajectory vs previous analysis of the same page
-- Export as summary, checklist, or full markdown report
-- `R` keyboard shortcut to re-analyze
+### Determinism
 
-### Fullscreen Extension
-
-- Tree view of every navigation page in the selected site and language
-- Score dots per page, updated as pages are analyzed
-- Full report per page: hero score, category grid, findings, passed checks
-- Site average and per-page delta
-- Batch analysis of every page in one click
-- Prev/next navigation with `[` and `]` keyboard shortcuts
-- Export per page or site-wide summary
-- Multi-site and multi-language support
+The engine is a deterministic rule pipeline. No LLM, classifier, or trained model is used. The freshness rule compares against the analysis timestamp, which is persisted with the result. Re-running the same published HTML against the same policy and timestamp produces the same score.
 
 ---
 
-## Architecture
+## What this is not
 
-```
-┌────────────────────────┐        ┌──────────────────────────┐
-│  Pages Context Panel   │        │   Fullscreen Extension   │
-│  (authoring sidebar)   │        │   (full page view)       │
-└───────────┬────────────┘        └────────────┬─────────────┘
-            │                                  │
-            │  xmc.agent.pagesGetPageHtml      │
-            │  (published HTML, by pageId)     │
-            │                                  │
-            ▼                                  ▼
-      ┌─────────────────────────────────────────────────┐
-      │        Shared deterministic analysis engine      │
-      │                                                 │
-      │   extractHtmlSignals → runRules → calculateResult│
-      └───────────────────────────┬─────────────────────┘
-                                  │
-                                  ▼
-                        ┌───────────────────┐
-                        │  AnalysisResult   │
-                        │  score + findings │
-                        └───────────────────┘
-```
-
-### Key architectural decisions
-
-**Deterministic first.** The score is produced by a rule engine, not by an LLM. The same HTML produces the same score every time. No variance, no hallucination, no network round-trip.
-
-**Same engine, two surfaces.** Both extensions call the same `extractHtmlSignals`, `runRules`, and `calculateResult` functions. The only difference is how they retrieve the page HTML — and today both use the same source.
-
-**Published HTML is the source of truth.** Both surfaces read the published HTML via the Agent API (`xmc.agent.pagesGetPageHtml`). This is the HTML that AI answer engines actually consume. It means the two surfaces agree exactly.
-
-**No configuration.** The app has no environment variables, no per-customer configuration, and no secrets. It discovers sites, languages, and pages from the authenticated Marketplace SDK at runtime.
+- **Not a ranking score.** It is an internal content-readiness indicator. It does not predict or guarantee citation in any AI surface.
+- **Not a fact-checker.** It measures structure and answer-readiness signals, not factual accuracy.
+- **Published HTML only.** Unsaved edits in Page Builder are not reflected until the page is published.
+- **No AI in the pipeline.** No LLM produces the score.
+- **Time-dependent freshness.** The freshness rule compares against the analysis timestamp, so scores can change as content ages.
+- **Heuristics are labeled.** Detectors such as the 12-month staleness threshold and English-only attribution matching are editorial rules, tagged `heuristic` in the report.
 
 ---
 
-## Repository structure
+## Tech stack
 
-```
-sitecoreai-answer-readiness/
-├── app/
-│   ├── fullscreen/
-│   │   └── page.tsx                     Fullscreen extension entry
-│   ├── pages-contextpanel-extension/
-│   │   └── page.tsx                     Context panel entry
-│   ├── api/
-│   │   └── analyze/
-│   │       └── route.ts                 Server-side analysis endpoint
-│   ├── layout.tsx
-│   └── globals.css
-│
-├── src/
-│   ├── components/
-│   │   ├── AnswerReadinessPanel.tsx     Context panel root
-│   │   ├── ScoreCard.tsx                Score ring and trajectory
-│   │   ├── CategoryCard.tsx             Category findings
-│   │   ├── DiagnosticCard.tsx           Insufficient-content state
-│   │   ├── PriorityCard.tsx             Top fixes
-│   │   ├── Banner.tsx                   Stale and error banners
-│   │   ├── CopyButton.tsx               Export menu
-│   │   ├── EmptyState.tsx               Waiting for Page Builder
-│   │   ├── HelpModal.tsx                "What this measures"
-│   │   └── site/
-│   │       ├── SiteAnalysisView.tsx     Fullscreen root
-│   │       ├── SitePageTree.tsx         Page tree
-│   │       ├── SiteReportView.tsx       Report view
-│   │       ├── SiteFindingCard.tsx      Per-finding card
-│   │       ├── SiteWelcomePanel.tsx     Empty state
-│   │       ├── SiteLoadingState.tsx
-│   │       └── SiteErrorState.tsx
-│   │
-│   ├── lib/
-│   │   └── analysis/
-│   │       ├── html.ts                  HTML signal extraction
-│   │       ├── rules.ts                 Rule engine
-│   │       ├── score.ts                 Scoring aggregation
-│   │       └── diff.ts                  Result comparison
-│   │
-│   ├── types/
-│   │   ├── analysis.ts                  Core analysis types
-│   │   └── site-analysis.ts             Fullscreen types
-│   │
-│   └── utils/
-│       └── hooks/
-│           └── useMarketplaceClient.ts  SDK initialization
-│
-├── package.json
-├── tailwind.config.ts
-├── tsconfig.json
-└── README.md
-```
+- **Next.js 14+ (App Router)** — Server Components for metadata, Client Components for interactive UI
+- **TypeScript** — full type coverage across the analysis engine
+- **Tailwind CSS** — used for layout and typography
+- **Montserrat + Orbitron** — brand typography loaded via Google Fonts CDN
+- **Sitecore Marketplace SDK** — `@sitecore-marketplace-sdk/client` and `@sitecore-marketplace-sdk/xmc`
+
+No external services. No database. No telemetry.
 
 ---
 
-## Prerequisites
+## Project structure
 
-- **Node.js 16 or later** — check with `node --version`
-- **npm 10 or later** — check with `npm --version`
-- A **SitecoreAI environment** with a Marketplace app configured in Sitecore Cloud Portal
-- **SitecoreAI APIs** enabled for the app in App Studio → your app → API access
-- Local DNS entry for `myapp.local` (see below)
+    sitecoreai-answer-readiness/
+    ├── app/                                # Next.js App Router
+    │   ├── api/
+    │   │   ├── analyze/route.ts            # POST — HTML in, AnalysisResult out
+    │   │   └── crawler-check/route.ts      # POST — siteUrl in, robots.txt state out
+    │   ├── fullscreen/                     # Fullscreen Extension entry point
+    │   ├── pages-contextpanel/             # Pages Context Panel entry point
+    │   ├── globals.css
+    │   ├── layout.tsx
+    │   ├── page.tsx                        # Marketing homepage
+    │   └── SelfAnalysis.tsx                # Live self-analysis demo
+    ├── src/
+    │   ├── components/
+    │   ├── lib/analysis/
+    │   ├── types/
+    │   └── utils/
+    ├── public/
+    ├── .env.example
+    ├── next.config.ts
+    ├── package.json
+    ├── postcss.config.mjs
+    ├── README.md
+    └── tsconfig.json
 
----
+### Extension entry points
 
-## Installation
+The app exposes two SitecoreAI extension points, each mapped to a route:
 
-### 1. Clone and install
-
-```bash
-git clone <your-repo-url>
-cd sitecoreai-answer-readiness
-npm install
-```
-
-### 2. Configure local HTTPS
-
-Page Builder only delivers context to iframes served over HTTPS. Update the dev script in `package.json`:
-
-```json
-"scripts": {
-  "dev": "next dev --experimental-https --hostname myapp.local",
-  "build": "next build",
-  "start": "next start"
-}
-```
-
-Add `myapp.local` to your hosts file:
-
-**Windows** — open Notepad as Administrator, edit `C:\Windows\System32\drivers\etc\hosts`:
-```
-127.0.0.1 myapp.local
-```
-
-**macOS / Linux:**
-```bash
-sudo sh -c 'echo "127.0.0.1 myapp.local" >> /etc/hosts'
-```
-
-### 3. Configure the Marketplace app
-
-In **Sitecore Cloud Portal → App Studio → your app**:
-
-- **Deployment URL**: `https://myapp.local:3000`
-- **API access**: enable **SitecoreAI APIs**
-- **Extensions**:
-  - **Pages Context Panel** → routing URL `/pages-contextpanel-extension`
-  - **Fullscreen** → routing URL `/fullscreen`
-
-### 4. Run
-
-```bash
-npm run dev
-```
-
-Accept the SSL certificate warning in your browser on the first load.
-
----
-
-## Local development
-
-### Open the app inside SitecoreAI, not directly
-
-Opening `https://myapp.local:3000` directly in a browser tab will initialize the SDK but the host will never deliver page context. The extension must be loaded **by Page Builder**.
-
-- **Context panel**: open a page in SitecoreAI Page Builder, then launch the app from the Apps menu in the toolbar.
-- **Fullscreen**: launch it from the Apps menu in the top-right toolbar.
-
-### Console logs
-
-Runtime logs from the app appear in the **browser tab that has Page Builder loaded**, not in the terminal running `npm run dev`. Open DevTools on that tab and filter for `[AnswerReadiness]` to see app-level logs.
-
-### Common development issues
-
-| Symptom | Cause | Fix |
+| Extension point | Route | Purpose |
 |---|---|---|
-| "Waiting for Page Builder context..." forever | App opened outside Page Builder | Open from the Apps menu inside SitecoreAI |
-| `pages.context` returns nothing | Extension point not enabled | Enable Pages Context Panel in Cloud Portal |
-| HTTPS warning in console | Dev server running over HTTP | Use `--experimental-https --hostname myapp.local` |
-| No pages found | Wrong site or language selected | Confirm site and language in the header |
+| Pages Context Panel | `app/pages-contextpanel/page.tsx` | Sidebar panel — analyzes the current page in Page Builder |
+| Fullscreen Extension | `app/fullscreen/page.tsx` | Site-wide view — page tree, average score, priority queue |
+
+Both routes render the same underlying analysis engine from `src/lib/analysis/`. The only differences are the UI shells.
 
 ---
 
-## Marketplace installation
+## Getting started
 
-### For end users
+### Prerequisites
 
-1. Install the app from the Sitecore Marketplace.
-2. The app appears under **Apps** in SitecoreAI.
-3. Open the **Answer Readiness** context panel from any page in Page Builder.
-4. Open the **Answer Readiness** fullscreen view from the Apps menu.
+- Node.js 24+
+- A SitecoreAI environment with the Marketplace App registered
+- SitecoreAI APIs access enabled in App Studio
+- Both extension points configured:
+  - **Pages Context Panel**
+  - **Fullscreen Extension**
 
-No configuration is required at install time. The app discovers sites, languages, and pages from the environment it is installed on.
+### Installation
 
-### For app publishers
+    git clone https://github.com/uday0508/sitecoreai-answer-readiness.git
+    cd sitecoreai-answer-readiness
+    npm install
 
-1. Register the app in Cloud Portal → App Studio.
-2. Set the deployment URL to your production origin.
-3. Enable **SitecoreAI APIs** in API access.
-4. Configure both extension points: Pages Context Panel and Fullscreen.
-5. Publish the app to the Marketplace.
-6. Verify installation on a fresh environment.
+### Development
 
----
+    npm run dev
 
-## Analysis engine
+Open one of the three routes:
 
-The engine is a pure function pipeline. No network calls happen inside it.
+- **Marketing homepage:** http://localhost:3000
+- **Pages Context Panel:** http://localhost:3000/pages-contextpanel
+- **Fullscreen Extension:** http://localhost:3000/fullscreen
 
-```
-HTML string
-    │
-    ▼
-extractHtmlSignals(html) → HtmlSignals
-    │
-    ▼
-runRules(signals) → AnalysisFinding[]
-    │
-    ▼
-calculateResult(findings, signals, pageId, language) → AnalysisResult
-```
+The two extension routes render standalone in a browser — the Sitecore SDK initializes against `window.parent`, so they show the "waiting for Page Builder" state until opened from inside Sitecore. The marketing homepage's self-analysis section works fully standalone.
 
-### `extractHtmlSignals`
+### Build
 
-Parses rendered HTML with regex-based extractors. Produces:
+    npm run build
+    npm run start
 
-- Headings with level and question detection
-- First paragraph and all substantial paragraphs
-- Title, meta description, canonical, OpenGraph
-- JSON-LD blocks with FAQPage detection
-- Lists, tables, links
-- Factual markers (numbers, dates, comparisons)
-- Pronoun-heavy sections
-- Self-containment issues
-- Localhost URLs, generic alt text
-- Author signals (meta, schema, byline)
-- Word count
+The app deploys to any Next.js-compatible host — Vercel, Render, Netlify, or a self-hosted Node server.
 
-### `runRules`
+### Testing inside Sitecore
 
-Runs five category evaluators. Each returns findings with severity, description, recommendation, score impact, samples, and suggestions.
+The app runs in two contexts:
 
-| Category | Rules |
-|---|---|
-| Answer Structure | Opening paragraph, heading hierarchy, question headings, scannable blocks |
-| Passage Integrity | Self-containment, pronoun density |
-| Factual Density | Factual marker count and density |
-| Entity Clarity | Definition, title, author signals, localhost URLs, generic alts |
-| FAQ Readiness | FAQPage schema, FAQ content, consistency, opportunity detection |
-
-### `calculateResult`
-
-Aggregates findings into five category scores, sums them, and decides whether the result is `scored` or `diagnostic`.
-
-If fewer than three categories have enough content to evaluate, the result is `diagnostic` — no score is shown, and the missing signals are listed instead.
+1. **Standalone** — open the deployed URL directly. The marketing page renders with a live demo analyzing itself.
+2. **Inside SitecoreAI** — install from the Marketplace and open it from Page Builder. The Pages Context Panel auto-analyzes the current page; the Fullscreen Extension shows the site-wide view.
 
 ---
 
-## Scoring model
+## API reference
 
-```
-Content Structure       35
-Passage Integrity       25
-Factual Density         20
-Entity Clarity          10
-FAQ Readiness           10
-                        ──
-Total                  100
-```
+### POST /api/analyze
 
-Every deducted point traces back to one or more findings. There is no hidden adjustment, no LLM smoothing, no per-customer calibration.
+Analyze a page's HTML and return an `AnalysisResult`.
 
-### Readiness tiers
+Body:
 
-| Score | Tier |
-|---|---|
-| 80–100 | Good readiness |
-| 60–79 | Needs improvement |
-| 35–59 | Significant gaps |
-| 0–34 | Not answer-ready |
+    {
+      "html": "<!doctype html>...",
+      "pageId": "431cae67-1645-4d65-a57b-c794638f7108",
+      "language": "en",
+      "crawlerStatus": {
+        "checked": true,
+        "googleExtendedBlocked": false,
+        "llmsTxtPresent": true
+      },
+      "policy": {
+        "staleAfterMonths": 12,
+        "minExternalLinks": 1,
+        "minAttributions": 1
+      },
+      "now": "2026-09-22T10:00:00Z"
+    }
 
-### Diagnostic mode
+All fields except `html` are optional.
 
-When a page has too little content to score, the app does not show a number. It shows a diagnostic card listing what is missing and how much content is present. This prevents the "empty page scores 77" problem that plagues naive analyzers.
+Response: `AnalysisResult`
 
----
+    {
+      "mode": "scored",
+      "score": 68,
+      "categories": [ ... ],
+      "findings": [ ... ],
+      "diagnostics": [ ... ],
+      "analyzedAt": "2026-09-22T10:00:00.000Z",
+      "primaryEntity": "VitaFlow Energy Drink",
+      "policy": { ... },
+      "source": { ... }
+    }
 
-## Security
+Limits:
 
-- **No secrets in client code.** Authentication is handled by the Marketplace SDK. There are no API keys, OAuth secrets, or credentials in browser-accessible code.
-- **Server-side analysis endpoint.** HTML analysis runs in `app/api/analyze/route.ts`. The client sends HTML, the server returns a structured result.
-- **Request size limits.** The analyze route rejects HTML larger than 2 MB.
-- **Input validation.** Every request is validated before processing.
-- **No arbitrary URL fetching.** The app does not fetch user-provided URLs.
-- **No configuration secrets.** The app has no environment variables and no per-installation secrets.
+- Max HTML size: 2 MB (`413` if exceeded)
+- `html` is required (`400` if missing)
+- Runtime: Node.js (not Edge)
 
----
+### POST /api/crawler-check
 
-## Performance
+Check a site's robots.txt and llms.txt state.
 
-- **HTML analysis is fast.** Signal extraction and rule evaluation run in under 50 ms for typical pages on the server.
-- **Fullscreen batch analysis is serialized.** Pages are fetched and scored one at a time, so the app never hits the site with parallel requests.
-- **Tree dots fill in as pages are analyzed.** No full re-analysis is required to see the site picture.
-- **Analysis results are cached in memory per session.** Re-selecting a page uses the cached result unless the user clicks re-analyze.
-- **Skeleton loaders replace spinners.** The fullscreen shows the shape of the report while it loads.
+Body:
 
----
+    { "siteUrl": "https://example.com" }
 
-## Testing
+Response:
 
-### Unit tests
+    {
+      "checked": true,
+      "googleExtendedBlocked": false,
+      "llmsTxtPresent": true
+    }
 
-Test each rule in isolation. Provide a small HTML fixture, assert the returned findings match expectations.
-
-Suggested cases:
-
-1. Perfectly structured page — all categories pass
-2. Missing metadata — title and description findings fire
-3. Poor heading hierarchy — jump detection fires
-4. Missing entity definition — entity-clarity warning fires
-5. Missing structured data — schema finding fires
-6. Incomplete answer content — factual density finding fires
-7. FAQ content without schema — FAQ finding fires
-8. Empty page — diagnostic mode returned
-9. Invalid HTML — extractor still returns signals
-10. Oversized HTML — the API rejects with 413
-
-### Integration tests
-
-- Full pipeline from HTML to `AnalysisResult`
-- Context panel HTML retrieval via Agent API
-- Fullscreen tree construction from flat page list
-- Multi-site filtering
-- Multi-language switching
-
-### Manual verification
-
-1. Open a page in Page Builder. Confirm the context panel scores it.
-2. Open the fullscreen extension. Confirm the same page scores identically.
-3. Change the language. Confirm the tree reloads.
-4. Click **Analyze all** in the fullscreen. Confirm every dot fills in.
-5. Export a report. Confirm the markdown contains every finding.
-
----
-
-## Limitations
-
-- **Published HTML only.** Both surfaces analyze the published version of the page. Unsaved edits in Page Builder are not reflected until the page is published.
-- **Single-page score, single-site scope.** The score applies to one page. The fullscreen reports on one site at a time.
-- **No crawler access checks.** The app does not inspect `robots.txt`, `Google-Extended` crawler access, or sitemap configuration.
-- **No cross-source authority.** The app does not verify claims against external sources, Wikidata, or manufacturer documentation.
-- **No AI-generated analysis.** The score is deterministic. The app does not use an LLM to interpret page content.
-- **The score is not a ranking score.** It measures on-page content readiness for AI extraction. It does not guarantee citation in any AI surface.
-
----
-
-## Roadmap
-
-### V1 — Shipped
-
-- Deterministic AEO/GEO engine
-- Pages Context Panel
-- Fullscreen extension with tree and report views
-- Multi-site and multi-language support
-- Export per page and per site
-
-### V1.1 — Planned
-
-- Author attribution and E-E-A-T signals
-- Content freshness metadata detection
-- FAQPage schema property validation
-
-### V1.2 — Planned
-
-- LLM-assisted rewrite suggestions where the model is available
-- Site-wide comparison and trend tracking
-
-### V2 — Proposed
-
-- Brand terminology and claims validation
-- Regulatory disclosure checks
-- Content governance rules per organization
+Rejects localhost, `.local`, and private IP ranges.
 
 ---
 
 ## Contributing
 
-This is a Marketplace reference implementation. Contributions that improve rule accuracy, UI clarity, or extensibility are welcome.
+Contributions are welcome. Please:
 
-Before opening a pull request:
+1. Fork the repo
+2. Create a feature branch (`git checkout -b feature/your-feature`)
+3. Commit your changes (`git commit -am 'Add feature'`)
+4. Push (`git push origin feature/your-feature`)
+5. Open a Pull Request
 
-1. Run `npx tsc --noEmit`. There should be no type errors.
-2. Run `npm run build`. There should be no build errors.
-3. Test both extensions inside Page Builder.
-4. Add a note to this README if you add or change a rule.
-5. Keep findings deterministic. If a rule depends on an LLM, it does not belong in the scoring engine.
+For larger changes, open an issue first to discuss.
 
 ---
 
 ## License
 
-MIT. See `LICENSE` for details.
+MIT — see [LICENSE](./LICENSE).
 
 ---
 
-## Attribution
+## Built by
 
-Built with:
+**BizTechnoSys** — Sitecore Gold Partner.
 
-- `@sitecore-marketplace-sdk/client`
-- `@sitecore-marketplace-sdk/xmc`
-- Next.js 15 App Router
-- Tailwind CSS v4
-- React 19
+- Website: https://biztechnosys.com
+- Marketplace: https://portal.sitecorecloud.io/marketplace/details?id=pub-35343dea-8835-4c7d-9f51-02ac96d4dc42
+- Contact: hello@biztechnosys.com
 
 ---
 
-## Support
+## Acknowledgements
 
-For issues with this app, open an issue on the repository.
+- [Sitecore Marketplace SDK](https://www.npmjs.com/package/@sitecore-marketplace-sdk/client)
+- [schema.org](https://schema.org) — the vocabulary that makes structured data machine-readable
+- [Open Graph Protocol](https://ogp.me) — the metadata standard for social and crawler consumption
+- [llmstxt.org](https://llmstxt.org) — emerging convention for AI agent content discovery
