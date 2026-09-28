@@ -259,7 +259,7 @@ MIT — see [LICENSE](./LICENSE).
 
 ## Built by
 
-**BizTechnoSys** — Sitecore Gold Partner.
+**Biztechnosys Infotech Pvt Ltd** — Sitecore Gold Partner.
 
 - Website: https://biztechnosys.com
 - Marketplace: https://portal.sitecorecloud.io/marketplace/details?id=pub-35343dea-8835-4c7d-9f51-02ac96d4dc42
