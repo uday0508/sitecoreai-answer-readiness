@@ -263,7 +263,6 @@ MIT — see [LICENSE](./LICENSE).
 
 - Website: https://biztechnosys.com
 - Marketplace: https://portal.sitecorecloud.io/marketplace/details?id=pub-35343dea-8835-4c7d-9f51-02ac96d4dc42
-- Contact: hello@biztechnosys.com
 
 ---
 
